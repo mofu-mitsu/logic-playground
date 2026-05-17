@@ -398,7 +398,7 @@ function renderQuestion() {
       const rb = document.createElement("button"); rb.className="choice-btn"; rb.innerText=r.text;
       rb.onclick = () => {
         saveHistory(); let p = (r.id === "C") ? max : 0;
-        if (p === max) { scores.leading += 10; scores.proof += 15; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
+        if (p === max) { scores.leading += 5; scores.ignoring += 25; scores.proof += 15; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
         logAction(`Paradox:${r.id}`, p, max); tiUserPoints += p; next();
       };
       container.appendChild(rb);
@@ -417,7 +417,7 @@ function renderQuestion() {
     finish.onclick = () => {
       saveHistory(); const isCorrect = document.getElementById("rule-D").querySelector(".draggable-item");
       let p = isCorrect ? max : 0; 
-      if (p === max) { scores.leading += 10; scores.leading += 5; scores.proof += 15; } else { scores.vulnerable += 20; scores.ignoring += 20; }
+      if (p === max) { scores.leading += 5; scores.leading += 5; scores.proof += 30; } else { scores.vulnerable += 20; scores.ignoring += 20; }
       logAction(isCorrect?"Rule:OK":"Rule:NG", p, max); tiUserPoints += p; next();
     };
     container.appendChild(finish);
@@ -468,19 +468,23 @@ function showResult() {
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
-  // 1. Ti強度を先に計算
+  // 1. Ti強度（0-100%）を計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
 
-  // 2. スコアが最も高い機能を選択
-  let high = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+  // 2. スコアをコピーして判定用のオブジェクトを作る
+  let finalScores = { ...scores };
 
-  // 3. 【厳格化ロジック】スコア1位が主導(leading)でも、強度が85%未満なら「主導」から除外
-  if (high === "leading" && str < 85) {
-    // 証明(proof)と規範(normative)のうち、スコアが高い方を暫定1位にする
-    high = (scores.proof >= scores.normative) ? "proof" : "normative";
-    actionLog.push(`[判定補正] 強度不足により主導Tiから${high}へ修正されました。`);
+  // 3. 【最重要：主導Tiの門番】
+  // 強度が80%未満、あるいは適当プレイ（vulnerableが高い）なら主導Tiから除外
+  if (str < 80 || scores.vulnerable > scores.leading) {
+    finalScores.leading = -1; // leadingを候補から消す
+    actionLog.push(`[判定システム] 強度不足（${str}%）のため主導Tiを除外しました。`);
   }
 
+  // 4. 改めて最高得点の機能を探す
+  let high = Object.keys(finalScores).reduce((a, b) => finalScores[a] > finalScores[b] ? a : b);
+
+  // マップ（8機能＋α）
   const map = { 
     leading: "主導Ti (LII/LSI)", 
     creative: "創造Ti (ILE/SLE)", 
@@ -490,8 +494,8 @@ function showResult() {
     proof: "証明Ti (LIE/LSE)", 
     mobilizing: "動員Ti (SEI/IEI)", 
     ignoring: "無視Ti (ILI/SLI)", 
-    fe_lead: "感情主導(Fe)", 
-    se_lead: "感覚主導(Se)" 
+    fe_lead: "感情主導(Fe-Leading)", 
+    se_lead: "感覚主導(Se-Leading)" 
   };
   
   // ダーリンちゃんのセリフ分岐
