@@ -341,7 +341,7 @@ function renderQuestion() {
     desc.innerHTML = "<b>※指示：</b> 文中にある間違いを見つけ、正しい漢字に直して入力してください。"; container.appendChild(desc);
     const qText = document.createElement("p"); qText.style.background="rgba(255,255,255,0.05)"; qText.style.padding="10px"; qText.style.textAlign="left";
     qText.innerText = "「論理的な整合せいが保たれていないシステムは、いずれ崩壊する。例外を放置することは、定義の曖昧さを許容することだ。」"; container.appendChild(qText);
-    const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい漢字を入力 (例: 整合性)"; container.appendChild(input);
+    const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい漢字を入力してね"; container.appendChild(input);
     const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="修正を適用";
     fixBtn.onclick = () => {
       saveHistory(); 
