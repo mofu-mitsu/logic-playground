@@ -1,9 +1,9 @@
 /**
  * ソシオTi強度チェッカー - 論理研究室
- * 究極完全版：スコア最適化・バグ修正版
+ * 究極完全版：タッチバグ完全修正・イベントクリーンアップ・GAS送信対応
  */
 
-// ★★★ ここにGASで発行されたURLを貼り付けてね！ ★★★
+// ★★★ GASウェブアプリURL ★★★
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyMFoYMXm7JKXL-3CrLJcidpznYMOZEDXzhnMBWE9P3JgJFUQPCZeWWZvuL7KJWFg-CVQ/exec";
 
 let currentQ = 0;
@@ -19,7 +19,20 @@ let questionStartTime = 0;
 let actionLog = []; 
 let history = []; 
 
+// イベントリーク（透明なゴミ）防止用配列
+let activeDocListeners = [];
+
 document.body.style.overflowX = "hidden";
+
+/* --- イベントクリーンアップ関数（スマホバグ防止の要） --- */
+function clearDocListeners() {
+  activeDocListeners.forEach(l => document.removeEventListener(l.type, l.fn, l.options));
+  activeDocListeners = [];
+}
+function addDocListener(type, fn, options) {
+  document.addEventListener(type, fn, options);
+  activeDocListeners.push({ type, fn, options });
+}
 
 function showScreen(id) {
   ["start-screen", "loading-screen", "question-screen", "result-screen"].forEach(s => {
@@ -49,46 +62,60 @@ document.getElementById("start-btn").onclick = () => {
   processLoading("論理マトリックスを初期化中...", () => { showScreen("question-screen"); renderQuestion(); });
 };
 
-/* --- スマホでスクロールしない究極のドラッグ関数 --- */
+/* --- 究極のドラッグ関数（ワープ防止＆タッチバグ防止） --- */
 function setupDraggable(element, onDropCallback) {
-  let isDragging = false; let offsetX, offsetY; let clone = null;
-  const start = (e) => {
+  let clone = null;
+  let offsetX = 0, offsetY = 0;
+
+  const onMove = (e) => {
+    if (!clone) return;
+    if (e.cancelable && e.type === "touchmove") e.preventDefault(); // ドラッグ中のみスクロール防止
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    clone.style.left = (clientX - offsetX) + "px";
+    clone.style.top = (clientY - offsetY) + "px";
+  };
+
+  const onEnd = (e) => {
+    if (!clone) return;
+    element.style.opacity = "1";
+    clone.style.display = 'none'; 
+    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    const dropTarget = document.elementFromPoint(clientX, clientY);
+    clone.remove(); clone = null;
+    
+    // ドラッグが終わったらイベントを消す
+    clearDocListeners();
+    if (onDropCallback) onDropCallback(clientX, clientY, element, dropTarget);
+  };
+
+  const onStart = (e) => {
+    if (clone) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const rect = element.getBoundingClientRect();
     offsetX = clientX - rect.left; offsetY = clientY - rect.top;
-    isDragging = true;
+
     clone = element.cloneNode(true);
     clone.classList.add("dragging-clone");
-    clone.style.position = 'fixed';
+    clone.style.position = 'fixed'; clone.style.zIndex = "9999";
     clone.style.width = rect.width + "px"; clone.style.height = rect.height + "px";
     clone.style.left = rect.left + "px"; clone.style.top = rect.top + "px";
     clone.style.pointerEvents = "none"; clone.style.opacity = "0.9"; clone.style.boxShadow = "0 0 15px #38bdf8";
     document.body.appendChild(clone);
     element.style.opacity = "0.1";
     if (e.type === "mousedown") e.preventDefault();
+
+    // ドラッグ中のみ監視を開始
+    addDocListener('mousemove', onMove, { passive: false });
+    addDocListener('touchmove', onMove, { passive: false });
+    addDocListener('mouseup', onEnd, false);
+    addDocListener('touchend', onEnd, false);
   };
-  const move = (e) => {
-    if (!isDragging || !clone) return;
-    if (e.type === "touchmove") e.preventDefault();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    clone.style.left = (clientX - offsetX) + "px"; clone.style.top = (clientY - offsetY) + "px";
-  };
-  const stop = (e) => {
-    if (!isDragging) return;
-    isDragging = false; element.style.opacity = "1";
-    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-    if (clone) {
-      clone.style.display = 'none';
-      const dropTarget = document.elementFromPoint(clientX, clientY);
-      clone.remove();
-      if (onDropCallback) onDropCallback(clientX, clientY, element, dropTarget);
-    }
-  };
-  element.addEventListener('mousedown', start); document.addEventListener('mousemove', move); document.addEventListener('mouseup', stop);
-  element.addEventListener('touchstart', start, {passive: false}); document.addEventListener('touchmove', move, {passive: false}); document.addEventListener('touchend', stop);
+
+  element.addEventListener('mousedown', onStart);
+  element.addEventListener('touchstart', onStart, { passive: false });
 }
 
 function logAction(msg, pts, max) {
@@ -99,6 +126,7 @@ function logAction(msg, pts, max) {
 function saveHistory() { history.push({ currentQ, scores: JSON.parse(JSON.stringify(scores)), tiUserPoints, tiMaxPossible, actionLog: [...actionLog], seFlag }); }
 function goBack() {
   if (history.length === 0) return;
+  clearDocListeners(); // ゴミ掃除
   const h = history.pop();
   currentQ = h.currentQ; scores = h.scores; tiUserPoints = h.tiUserPoints; tiMaxPossible = h.tiMaxPossible; actionLog = h.actionLog; seFlag = h.seFlag;
   renderQuestion();
@@ -124,6 +152,8 @@ setInterval(() => {
 
 /* --- メインレンダリング --- */
 function renderQuestion() {
+  clearDocListeners(); // 問題切り替え時に透明なゴミを完全消去
+
   const container = document.getElementById("question-container");
   container.innerHTML = ""; container.style.border = ""; container.style.background = "";
   questionStartTime = Date.now();
@@ -137,8 +167,6 @@ function renderQuestion() {
 
   const title = document.createElement("h3"); title.innerHTML = q.text; container.appendChild(title);
 
-  /* ★★★ ギミック分岐 ★★★ */
-
   // 1. 介入
   if (type === "darling_interception") {
     const max = 30; tiMaxPossible += max;
@@ -148,7 +176,7 @@ function renderQuestion() {
       const btn = document.createElement("button"); btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
       btn.onclick = () => { 
         saveHistory(); 
-        if(c.f === "vulnerable") scores.vulnerable += 20; // 適当ペナルティ
+        if(c.f === "vulnerable") scores.vulnerable += 20; 
         else scores[c.f] += c.s; 
         tiUserPoints += c.s; 
         logAction(c.t.substring(0,6), c.s, max); next(); 
@@ -163,14 +191,11 @@ function renderQuestion() {
       const btn = document.createElement("button"); btn.className = "choice-btn"; btn.innerText = c.text;
       btn.onclick = () => {
         saveHistory(); let p = c.score || 0;
-        
         const elapsed = Date.now() - questionStartTime;
-        if (elapsed < 1500) scores.vulnerable += 15; // 秒殺ペナルティ
-
+        if (elapsed < 1500) scores.vulnerable += 15;
         if(scores[c.func] !== undefined) scores[c.func] += p;
         const tiFuncs = ["leading", "creative", "normative", "proof", "mobilizing", "ignoring", "suggestive"];
         if (tiFuncs.includes(c.func)) tiUserPoints += p;
-        
         logAction(c.text.substring(0,10), p, max); next(); 
       };
       container.appendChild(btn);
@@ -186,12 +211,7 @@ function renderQuestion() {
     btn.onclick = () => {
       saveHistory(); const v = parseFloat(sli.value);
       let p = (v === 50.0) ? 40 : (Math.abs(v - 50) <= 1.0 ? 20 : 0);
-      
-      // スコアの厳格化
-      if (v === 50.0) { scores.leading += 20; scores.proof += 10; }
-      else if (p > 0) { scores.normative += 20; }
-      else { scores.vulnerable += 20; scores.ignoring += 10; } // 外すと脆弱Ti爆上げ
-      
+      if (v === 50.0) { scores.leading += 20; scores.proof += 10; } else if (p > 0) scores.normative += 15; else scores.vulnerable += 10;
       logAction(`Slider:${v}`, p, max); tiUserPoints += p; next();
     };
     container.appendChild(sli); container.appendChild(val); container.appendChild(btn);
@@ -209,8 +229,7 @@ function renderQuestion() {
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="次へ";
     btn.onclick = () => {
       saveHistory(); let p = fixed ? 30 : 0;
-      if (fixed) { scores.leading += 20; scores.proof += 10; } 
-      else { scores.vulnerable += 20; scores.ignoring += 10; } // 直さないと脆弱Ti
+      if (fixed) { scores.leading += 10; scores.normative += 10; } else { scores.vulnerable += 15; }
       logAction(fixed?"ズレ修正":"放置", p, max); tiUserPoints += p; next();
     };
     container.appendChild(wrap); container.appendChild(btn);
@@ -240,8 +259,8 @@ function renderQuestion() {
       let isAligned = (dY < 20 || dX < 20); 
       let p = 0; let msg = "";
       if (corners >= 3) { p = 30; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 20; }
-      else if (isAligned) { p = 30; msg = "綺麗に整列(Ti)"; scores.leading += 20; scores.normative += 10; }
-      else { p = 0; msg = "適当な配置"; scores.vulnerable += 20; scores.ignoring += 10; } // 適当配置ペナルティ
+      else if (isAligned) { p = 30; msg = "綺麗に整列(Ti)"; scores.leading += 15; scores.normative += 10; }
+      else { p = 10; msg = "適当な配置"; scores.vulnerable += 15; }
       logAction(msg, p, max); tiUserPoints += p; next();
     };
     container.appendChild(area); container.appendChild(btn);
@@ -264,32 +283,46 @@ function renderQuestion() {
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="分類を終了";
     btn.onclick = () => { 
       saveHistory(); 
-      // 動かしたかどうかの判定
-      const movedItems = f1.children.length + f2.children.length - 2; // bタグ分引く
-      let p = (movedItems > 0) ? max : 0;
+      const moved = f1.children.length + f2.children.length - 2; 
+      let p = (moved > 0) ? max : 0;
       if (p === max) { scores.leading += 20; scores.proof += 10; } else { scores.vulnerable += 20; }
       logAction("仕分け終了", p, max); tiUserPoints += p; next(); 
     };
     wrap.appendChild(f1); wrap.appendChild(f2); container.appendChild(wrap); container.appendChild(pool); container.appendChild(btn);
   }
-  // 7. 境界線
+  // 7. 境界線 (バグ完全修正)
   else if (type === "black_white_boundary") {
     const max = 35; tiMaxPossible += max;
     const bar = document.createElement("div"); bar.className="gradient-bar";
     const handle = document.createElement("div"); handle.className="boundary-handle"; handle.style.left="5%"; bar.appendChild(handle);
     let active = false; let clicked = false;
-    handle.onmousedown = handle.ontouchstart = () => { active = true; clicked = true; };
-    document.onmousemove = document.ontouchmove = (e) => {
-      if(!active) return; const x = e.touches ? e.touches[0].clientX : e.clientX; const r = bar.getBoundingClientRect();
+    
+    const moveLine = (e) => {
+      if(!active) return;
+      if(e.cancelable && e.type === "touchmove") e.preventDefault(); // スクロール防止
+      const x = e.touches ? e.touches[0].clientX : e.clientX; const r = bar.getBoundingClientRect();
       let p = x - r.left; if(p < 0) p = 0; if(p > r.width) p = r.width;
       handle.style.left = p + "px"; handle.dataset.val = (p / r.width) * 100;
     };
-    document.onmouseup = document.ontouchend = () => active = false;
+    const endLine = () => { 
+      active = false; clearDocListeners(); 
+    };
+    const startLine = (e) => { 
+      active = true; clicked = true; 
+      if(e.type==="mousedown") e.preventDefault();
+      addDocListener("mousemove", moveLine, {passive: false});
+      addDocListener("touchmove", moveLine, {passive: false});
+      addDocListener("mouseup", endLine, false);
+      addDocListener("touchend", endLine, false);
+    };
+    
+    handle.addEventListener("mousedown", startLine); handle.addEventListener("touchstart", startLine, {passive: false});
+
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="境界を確定";
     btn.onclick = () => {
-      saveHistory(); let v = parseFloat(handle.dataset.val || 5); 
-      let p = 0;
-      if (!clicked) { scores.vulnerable += 20; logAction("境界線を動かさず確定", 0, max); }
+      saveHistory(); clearDocListeners(); // 強制掃除
+      let v = parseFloat(handle.dataset.val || 5); let p = 0;
+      if (!clicked) { scores.vulnerable += 20; logAction("動かさず確定", 0, max); }
       else if (v > 88) { p = 35; scores.leading += 20; scores.proof += 10; logAction(`B-Line:${v.toFixed(1)}%`, p, max); }
       else { p = 15; scores.normative += 15; logAction(`B-Line:${v.toFixed(1)}%`, p, max); }
       tiUserPoints += p; next();
@@ -313,28 +346,24 @@ function renderQuestion() {
     const go = document.createElement("button"); go.className="choice-btn"; go.innerText="この手順で実行";
     go.onclick = () => {
       saveHistory(); const firstStep = Array.from(pList.children).find(el => el.dataset.order === "1");
-      let p = (firstStep && firstStep.innerText.includes("フィルム")) ? max : 0;
+      let p = (firstStep && firstStep.innerText.includes("フィルム")) ? max : 10;
       if (p === max) { scores.leading += 20; scores.proof += 10; } else { scores.vulnerable += 20; scores.suggestive += 10; }
       logAction("Manual", p, max); tiUserPoints += p; next();
     };
     container.appendChild(pList); container.appendChild(go);
   }
-  // 9. 文章修正デバッグ (プレースホルダー修正済)
+  // 9. 文章修正デバッグ
   else if (type === "text_debug") {
     const max = 30; tiMaxPossible += max;
     const desc = document.createElement("p"); desc.style.fontSize="0.85rem"; desc.style.textAlign="left";
     desc.innerHTML = "<b>※指示：</b> 文中にある間違いを見つけ、正しい漢字に直して入力してください。"; container.appendChild(desc);
     const qText = document.createElement("p"); qText.style.background="rgba(255,255,255,0.05)"; qText.style.padding="10px"; qText.style.textAlign="left";
     qText.innerText = "「論理的な整合せいが保たれていないシステムは、いずれ崩壊する。例外を放置することは、定義の曖昧さを許容することだ。」"; container.appendChild(qText);
-    
-    // プレースホルダーを完全に修正！！
     const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい漢字を入力してください"; container.appendChild(input);
-    
     const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="修正を適用";
     fixBtn.onclick = () => {
       saveHistory(); 
-      let val = input.value.trim();
-      let p = (val === "整合性" || val === "性") ? max : 0;
+      let val = input.value.trim(); let p = (val === "整合性" || val === "性") ? max : 0;
       if (p === max) { scores.leading += 20; scores.proof += 10; } else { scores.vulnerable += 20; scores.ignoring += 10; }
       logAction(`Debug:${val}`, p, max); tiUserPoints += p; next();
     };
@@ -355,9 +384,7 @@ function renderQuestion() {
       saveHistory(); 
       const count = treeF.querySelectorAll('.draggable-item').length;
       let p = (count >= 4) ? max : (count > 0 ? 15 : 0);
-      if (p === max) { scores.leading += 15; scores.mobilizing += 15; } 
-      else if (p > 0) { scores.normative += 15; } 
-      else { scores.vulnerable += 20; }
+      if (p === max) { scores.leading += 15; scores.mobilizing += 15; } else if (p > 0) { scores.normative += 15; } else { scores.vulnerable += 20; }
       logAction("Tree", p, max); tiUserPoints += p; next(); 
     };
     container.appendChild(treeF); container.appendChild(treeP); container.appendChild(ok);
@@ -396,7 +423,6 @@ function renderQuestion() {
     const max = 30; tiMaxPossible += max;
     const slot = document.createElement("div"); slot.className="folder"; slot.id="exp-slot"; slot.style.width="95%"; slot.style.minHeight="80px"; slot.innerHTML="<b>【説明用スロット(2つまで)】</b>";
     const p = document.createElement("div"); p.style.display="flex"; p.style.flexDirection="column"; p.style.gap="5px"; p.style.margin="10px 0";
-    
     const shuffledBlocks = [...q.blocks].sort(() => Math.random() - 0.5);
     shuffledBlocks.forEach(b => {
       const item = document.createElement("div"); item.className="draggable-item"; item.style.display="block"; item.innerText=b.text; item.dataset.id = b.id;
@@ -414,7 +440,7 @@ function renderQuestion() {
     container.appendChild(slot); container.appendChild(p); container.appendChild(finish);
   }
 
-  // --- フッター（戻る ＆ わからない） ---
+  // --- フッター ---
   const footer = document.createElement("div"); footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.gap = "10px";
   const backBtn = document.createElement("button"); backBtn.className = "choice-btn"; backBtn.style.flex = "1"; backBtn.style.background = "rgba(255,255,255,0.05)";
   backBtn.innerHTML = "<i class='fa-solid fa-arrow-left'></i> 戻る"; backBtn.onclick = goBack;
@@ -423,7 +449,7 @@ function renderQuestion() {
   skipBtn.innerHTML = "判定不能 / スキップ"; 
   skipBtn.onclick = () => { 
     saveHistory(); 
-    scores.vulnerable += 20; scores.ignoring += 10; // わからない場合は脆弱/無視Tiを激増させる
+    scores.vulnerable += 20; scores.ignoring += 10; 
     logAction("Skip", 0, 0); 
     next(); 
   };
