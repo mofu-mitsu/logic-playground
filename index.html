@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO & OGP Meta Tags -->
+  <title>ソシオTi強度チェッカー - 論理研究室 - | ソシオニクス内向思考診断</title>
+  <meta name="description" content="あなたのソシオニクスにおけるTi（内向思考）の強度と配置を分析する体験型性格診断ツールです。論理の迷宮で遊びながら、あなたの認知の癖を導き出します。">
+  <meta property="og:title" content="ソシオTi強度チェッカー - 論理研究室 -">
+  <meta property="og:description" content="あなたのTi（内向思考）はどの配置？ソシオニクスの8機能からあなたの論理構造をスキャンします。">
+  <meta property="og:image" content="https://mofu-mitsu.github.io/logic-playground/ogp.png">
+  <meta property="og:url" content="https://mofu-mitsu.github.io/logic-playground/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <!-- Favicon (絵文字 🐛) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐛</text></svg>">
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+  <!-- EXITボタン（JSで挙動を制御） -->
+  <button id="exit-btn" class="exit-btn"><i class="fa-solid fa-arrow-right-from-bracket"></i> EXIT</button>
+
+  <div class="glass-container" id="app">
+    <div id="start-screen">
+      <h1><i class="fa-solid fa-microchip"></i> ソシオTi強度チェッカー</h1>
+      <p>論理研究室へようこそ。<br>あなたのTi構造をスキャンします。</p>
+      <div class="user-info">
+        <input type="text" id="self-id" placeholder="自認タイプ (例: LII, INTJ 5w6)">
+      </div>
+      <button class="choice-btn" id="start-btn">研究を開始する</button>
+    </div>
+
+    <div id="loading-screen" class="hidden">
+      <div class="loader"></div>
+      <p class="loading-text" id="loader-text">脳内論理構造をスキャン中...</p>
+    </div>
+
+    <div id="question-screen" class="hidden scroll-area">
+      <main id="question-container"></main>
+    </div>
+
+    <div id="result-screen" class="hidden scroll-area"></div>
+  </div>
+
+  <div id="bug-container">
+    <div id="bug-bubble" class="bubble hidden">...</div>
+    <div id="bug" class="bug-icon">🐛</div>
+  </div>
+
+  <div id="darling-container" class="hidden">
+    <div id="darling-bubble" class="bubble-pink"></div>
+    <div id="darling" class="darling-icon">🥺</div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
