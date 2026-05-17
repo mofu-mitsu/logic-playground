@@ -192,7 +192,10 @@ function renderQuestion() {
       btn.onclick = () => {
         saveHistory(); let p = c.score || 0;
         const elapsed = Date.now() - questionStartTime;
-        if (elapsed < 1500) scores.vulnerable += 15;
+        if (elapsed < 1200) { 
+        scores.vulnerable += 25; // 1.2秒未満は「考えを放棄した」とみなす
+        scores.leading -= 10;    // 主導Tiスコアを直接削る
+        }
         if(scores[c.func] !== undefined) scores[c.func] += p;
         const tiFuncs = ["leading", "creative", "normative", "proof", "mobilizing", "ignoring", "suggestive"];
         if (tiFuncs.includes(c.func)) tiUserPoints += p;
@@ -364,7 +367,7 @@ function renderQuestion() {
     fixBtn.onclick = () => {
       saveHistory(); 
       let val = input.value.trim(); let p = (val === "整合性" || val === "性") ? max : 0;
-      if (p === max) { scores.leading += 20; scores.proof += 10; } else { scores.vulnerable += 20; scores.ignoring += 10; }
+      if (p === max) { scores.leading += 10; scores.normative += 10;  scores.proof += 15; } else { scores.vulnerable += 20; scores.ignoring += 10; }
       logAction(`Debug:${val}`, p, max); tiUserPoints += p; next();
     };
     container.appendChild(fixBtn);
@@ -384,7 +387,7 @@ function renderQuestion() {
       saveHistory(); 
       const count = treeF.querySelectorAll('.draggable-item').length;
       let p = (count >= 4) ? max : (count > 0 ? 15 : 0);
-      if (p === max) { scores.leading += 15; scores.mobilizing += 15; } else if (p > 0) { scores.normative += 15; } else { scores.vulnerable += 20; }
+      if (p === max) { scores.leading += 15; scores.mobilizing += 25; } else if (p > 0) { scores.normative += 15; } else { scores.vulnerable += 20; }
       logAction("Tree", p, max); tiUserPoints += p; next(); 
     };
     container.appendChild(treeF); container.appendChild(treeP); container.appendChild(ok);
@@ -395,7 +398,7 @@ function renderQuestion() {
       const rb = document.createElement("button"); rb.className="choice-btn"; rb.innerText=r.text;
       rb.onclick = () => {
         saveHistory(); let p = (r.id === "C") ? max : 0;
-        if (p === max) { scores.leading += 20; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
+        if (p === max) { scores.leading += 10; scores.proof += 15; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
         logAction(`Paradox:${r.id}`, p, max); tiUserPoints += p; next();
       };
       container.appendChild(rb);
@@ -414,7 +417,7 @@ function renderQuestion() {
     finish.onclick = () => {
       saveHistory(); const isCorrect = document.getElementById("rule-D").querySelector(".draggable-item");
       let p = isCorrect ? max : 0; 
-      if (p === max) { scores.leading += 20; scores.proof += 15; } else { scores.vulnerable += 20; scores.ignoring += 10; }
+      if (p === max) { scores.leading += 10; scores.leading += 5; scores.proof += 15; } else { scores.vulnerable += 20; scores.ignoring += 20; }
       logAction(isCorrect?"Rule:OK":"Rule:NG", p, max); tiUserPoints += p; next();
     };
     container.appendChild(finish);
@@ -433,7 +436,7 @@ function renderQuestion() {
     finish.onclick = () => {
       saveHistory(); const inSlot = Array.from(slot.querySelectorAll(".draggable-item")).map(el => el.dataset.id);
       let p_score = 15;
-      if (inSlot.includes("B") || inSlot.includes("C") || inSlot.includes("D")) { scores.creative += 20; scores.mobilizing += 10; p_score = max; logAction("相手に合わせた説明(創造Ti)", p_score, max); }
+      if (inSlot.includes("B") || inSlot.includes("C") || inSlot.includes("D")) { scores.creative += 20; scores.mobilizing += 20; p_score = max; logAction("相手に合わせた説明(創造Ti)", p_score, max); }
       else { scores.leading += 20; logAction("厳密な説明(主導Ti)", p_score, max); }
       tiUserPoints += p_score; next();
     };
@@ -459,15 +462,39 @@ function renderQuestion() {
 function next() { currentQ++; renderQuestion(); }
 
 // --- 結果表示＆GAS送信 ---
+// --- 結果表示 ---
 function showResult() {
   showScreen("result-screen");
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
-  let high = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
-  const map = { leading: "主導Ti (LII/LSI)", creative: "創造Ti (ILE/SLE)", normative: "規範Ti (ESI/EII)", vulnerable: "脆弱Ti (SEE/IEE)", suggestive: "暗示Ti (ESE/EIE)", proof: "証明Ti (LIE/LSE)", mobilizing: "動員Ti (SEI/IEI)", ignoring: "無視Ti (ILI/SLI)", fe_lead: "感情主導(Fe)", se_lead: "感覚主導(Se)" };
-  
+
+  // 1. Ti強度を先に計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
+
+  // 2. スコアが最も高い機能を選択
+  let high = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+
+  // 3. 【厳格化ロジック】スコア1位が主導(leading)でも、強度が85%未満なら「主導」から除外
+  if (high === "leading" && str < 85) {
+    // 証明(proof)と規範(normative)のうち、スコアが高い方を暫定1位にする
+    high = (scores.proof >= scores.normative) ? "proof" : "normative";
+    actionLog.push(`[判定補正] 強度不足により主導Tiから${high}へ修正されました。`);
+  }
+
+  const map = { 
+    leading: "主導Ti (LII/LSI)", 
+    creative: "創造Ti (ILE/SLE)", 
+    normative: "規範Ti (ESI/EII)", 
+    vulnerable: "脆弱Ti (SEE/IEE)", 
+    suggestive: "暗示Ti (ESE/EIE)", 
+    proof: "証明Ti (LIE/LSE)", 
+    mobilizing: "動員Ti (SEI/IEI)", 
+    ignoring: "無視Ti (ILI/SLI)", 
+    fe_lead: "感情主導(Fe)", 
+    se_lead: "感覚主導(Se)" 
+  };
   
+  // ダーリンちゃんのセリフ分岐
   let darlingSpeech = "";
   if (seFlag) darlingSpeech = darlingResultQuotes.se[Math.floor(Math.random() * darlingResultQuotes.se.length)];
   else if (str >= 80) darlingSpeech = darlingResultQuotes.high[Math.floor(Math.random() * darlingResultQuotes.high.length)];
@@ -498,6 +525,7 @@ function showResult() {
     <button class="choice-btn" data-html2canvas-ignore="true" style="margin-top:20px; border:2px solid #38bdf8;" onclick="location.reload()">再研究（もう一度遊ぶ）</button>
   `;
 
+  // GAS送信
   if (GAS_URL && GAS_URL.startsWith("http")) {
     fetch(GAS_URL, {
       method: 'POST', body: JSON.stringify({ selfId: selfId, strength: str, resultType: map[high], actionLog: actionLog }),
@@ -505,15 +533,20 @@ function showResult() {
     }).catch(e => console.log("GAS Send Error:", e));
   }
 
+  // 画像保存
   document.getElementById('save-img-btn').onclick = () => {
     html2canvas(document.querySelector('.glass-container'), {backgroundColor: '#0f172a'}).then(canvas => {
       let link = document.createElement('a'); link.download = 'ti-checker-result.png'; link.href = canvas.toDataURL(); link.click();
     });
   };
+  
+  // シェア
   document.getElementById('share-btn').onclick = () => {
     if (navigator.share) navigator.share({ title: 'ソシオTi強度チェッカー', text: `【論理研究室】\n私のTi強度は${str}%、推定配置は【${map[high]}】でした！\n#ソシオニクス\n`, url: window.location.href });
     else alert("お使いのブラウザは共有機能に対応していません。");
   };
+  
+  // ログコピー
   document.getElementById('copy-log-btn').onclick = () => {
     navigator.clipboard.writeText("【システム詳細ログ】\n" + actionLog.join("\n")).then(() => { alert("詳細ログをコピーしました！"); });
   };
