@@ -1,6 +1,6 @@
 /**
  * ソシオTi強度チェッカー - 論理研究室
- * 主導Ti厳格化・スマホ完全対応・GAS送信連携版
+ * タッチバグ完全修正・イベントクリーンアップ搭載版
  */
 
 // ★★★ ここにGASで発行されたURLを貼り付けてね！ ★★★
@@ -49,46 +49,74 @@ document.getElementById("start-btn").onclick = () => {
   processLoading("論理マトリックスを初期化中...", () => { showScreen("question-screen"); renderQuestion(); });
 };
 
-/* --- スマホでスクロールしない究極のドラッグ関数 --- */
+/* --- 【修正】イベントを残さない究極のドラッグ関数 --- */
 function setupDraggable(element, onDropCallback) {
-  let isDragging = false; let offsetX, offsetY; let clone = null;
-  const start = (e) => {
+  let clone = null;
+  let offsetX = 0, offsetY = 0;
+
+  const onMove = (e) => {
+    if (!clone) return;
+    if (e.cancelable) e.preventDefault(); // スマホのスクロールを防止（ドラッグ中のみ）
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    clone.style.left = (clientX - offsetX) + "px";
+    clone.style.top = (clientY - offsetY) + "px";
+  };
+
+  const onEnd = (e) => {
+    if (!clone) return;
+    // イベントを綺麗に掃除する（次の問題にバグを残さない！）
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onEnd);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+
+    element.style.opacity = "1";
+    clone.style.display = 'none'; // ドロップ先の判定のため一時的に消す
+    
+    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    const dropTarget = document.elementFromPoint(clientX, clientY);
+    
+    clone.remove(); // クローンを完全に削除
+    clone = null;
+
+    if (onDropCallback) onDropCallback(clientX, clientY, element, dropTarget);
+  };
+
+  const onStart = (e) => {
+    if (clone) return; // 既にドラッグ中なら無視
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     const rect = element.getBoundingClientRect();
-    offsetX = clientX - rect.left; offsetY = clientY - rect.top;
-    isDragging = true;
+    
+    offsetX = clientX - rect.left;
+    offsetY = clientY - rect.top;
+
     clone = element.cloneNode(true);
     clone.classList.add("dragging-clone");
     clone.style.position = 'fixed';
-    clone.style.width = rect.width + "px"; clone.style.height = rect.height + "px";
-    clone.style.left = rect.left + "px"; clone.style.top = rect.top + "px";
-    clone.style.pointerEvents = "none"; clone.style.opacity = "0.9"; clone.style.boxShadow = "0 0 15px #38bdf8";
+    clone.style.zIndex = "9999";
+    clone.style.width = rect.width + "px";
+    clone.style.height = rect.height + "px";
+    clone.style.left = rect.left + "px";
+    clone.style.top = rect.top + "px";
+    clone.style.pointerEvents = "none";
+    clone.style.opacity = "0.9";
+    clone.style.boxShadow = "0 0 15px #38bdf8";
     document.body.appendChild(clone);
+    
     element.style.opacity = "0.1";
-    if (e.type === "mousedown") e.preventDefault();
+
+    // ドラッグ開始時のみ監視を開始
+    document.addEventListener('mousemove', onMove, { passive: false });
+    document.addEventListener('mouseup', onEnd);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
   };
-  const move = (e) => {
-    if (!isDragging || !clone) return;
-    if (e.type === "touchmove") e.preventDefault(); // ★スマホで画面がスクロールするのを防ぐ★
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    clone.style.left = (clientX - offsetX) + "px"; clone.style.top = (clientY - offsetY) + "px";
-  };
-  const stop = (e) => {
-    if (!isDragging) return;
-    isDragging = false; element.style.opacity = "1";
-    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-    if (clone) {
-      clone.style.display = 'none';
-      const dropTarget = document.elementFromPoint(clientX, clientY);
-      clone.remove();
-      if (onDropCallback) onDropCallback(clientX, clientY, element, dropTarget);
-    }
-  };
-  element.addEventListener('mousedown', start); document.addEventListener('mousemove', move); document.addEventListener('mouseup', stop);
-  element.addEventListener('touchstart', start, {passive: false}); document.addEventListener('touchmove', move, {passive: false}); document.addEventListener('touchend', stop);
+
+  element.addEventListener('mousedown', onStart);
+  element.addEventListener('touchstart', onStart, { passive: true });
 }
 
 function logAction(msg, pts, max) {
@@ -137,8 +165,6 @@ function renderQuestion() {
 
   const title = document.createElement("h3"); title.innerHTML = q.text; container.appendChild(title);
 
-  /* ★★★ ギミック分岐 ★★★ */
-
   // 1. 介入
   if (type === "darling_interception") {
     const max = 30; tiMaxPossible += max;
@@ -157,11 +183,8 @@ function renderQuestion() {
       const btn = document.createElement("button"); btn.className = "choice-btn"; btn.innerText = c.text;
       btn.onclick = () => {
         saveHistory(); let p = c.score || 0;
-        
-        // 思考時間が極端に短い場合はvulnerable(適当・Se/Te)にポイントを加算
         const elapsed = Date.now() - questionStartTime;
         if (elapsed < 1500) scores.vulnerable += 5;
-
         if(scores[c.func] !== undefined) scores[c.func] += p;
         const tiFuncs = ["leading", "creative", "normative", "proof", "mobilizing", "ignoring", "suggestive"];
         if (tiFuncs.includes(c.func)) tiUserPoints += p;
@@ -185,7 +208,7 @@ function renderQuestion() {
     };
     container.appendChild(sli); container.appendChild(val); container.appendChild(btn);
   }
-  // 4. ズレ直し ★スコア分散★
+  // 4. ズレ直し
   else if (type === "align_fix") {
     const max = 30; tiMaxPossible += max;
     const wrap = document.createElement("div"); wrap.style.display="flex"; wrap.style.justifyContent="center"; wrap.style.gap="15px"; wrap.style.margin="25px 0";
@@ -203,7 +226,7 @@ function renderQuestion() {
     };
     container.appendChild(wrap); container.appendChild(btn);
   }
-  // 5. 自由配置 ★スコア分散★
+  // 5. 自由配置
   else if (type === "align_free") {
     const max = 30; tiMaxPossible += max;
     const area = document.createElement("div"); area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px"; area.style.overflowX="hidden";
@@ -234,7 +257,7 @@ function renderQuestion() {
     };
     container.appendChild(area); container.appendChild(btn);
   }
-  // 6. 二重分類 ★スコア分散★
+  // 6. 二重分類
   else if (type === "classification") {
     const max = 40; tiMaxPossible += max;
     const wrap = document.createElement("div"); wrap.className="folder-wrap";
@@ -253,19 +276,33 @@ function renderQuestion() {
     btn.onclick = () => { saveHistory(); logAction("仕分け", max, max); tiUserPoints += max; scores.leading += 10; scores.proof += 10; next(); };
     wrap.appendChild(f1); wrap.appendChild(f2); container.appendChild(wrap); container.appendChild(pool); container.appendChild(btn);
   }
-  // 7. 境界線 ★スコア分散★
+  // 7. 境界線 【修正：イベントのクリーンアップを追加】
   else if (type === "black_white_boundary") {
     const max = 35; tiMaxPossible += max;
     const bar = document.createElement("div"); bar.className="gradient-bar";
     const handle = document.createElement("div"); handle.className="boundary-handle"; handle.style.left="5%"; bar.appendChild(handle);
+    
     let active = false;
-    handle.onmousedown = handle.ontouchstart = () => active = true;
-    document.onmousemove = document.ontouchmove = (e) => {
-      if(!active) return; const x = e.touches ? e.touches[0].clientX : e.clientX; const r = bar.getBoundingClientRect();
+    const onMove = (e) => {
+      if(!active) return;
+      if(e.cancelable) e.preventDefault(); // スマホスクロール防止
+      const x = e.touches ? e.touches[0].clientX : e.clientX;
+      const r = bar.getBoundingClientRect();
       let p = x - r.left; if(p < 0) p = 0; if(p > r.width) p = r.width;
       handle.style.left = p + "px"; handle.dataset.val = (p / r.width) * 100;
     };
-    document.onmouseup = document.ontouchend = () => active = false;
+    const onEnd = () => {
+      active = false;
+      document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onEnd);
+      document.removeEventListener("touchmove", onMove); document.removeEventListener("touchend", onEnd);
+    };
+    const onStart = (e) => {
+      active = true;
+      document.addEventListener("mousemove", onMove, { passive: false }); document.addEventListener("mouseup", onEnd);
+      document.addEventListener("touchmove", onMove, { passive: false }); document.addEventListener("touchend", onEnd);
+    };
+    handle.addEventListener("mousedown", onStart); handle.addEventListener("touchstart", onStart, { passive: true });
+
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="境界を確定";
     btn.onclick = () => {
       saveHistory(); let v = parseFloat(handle.dataset.val || 5); let p = (v > 89) ? 35 : 15;
@@ -274,7 +311,7 @@ function renderQuestion() {
     };
     container.appendChild(bar); container.appendChild(btn);
   }
-  // 8. 説明書 ★スコア分散★
+  // 8. 説明書
   else if (type === "manual_gimmick") {
     const max = 50; tiMaxPossible += max;
     const mBox = document.createElement("div"); mBox.style.fontSize="0.75rem"; mBox.style.background="rgba(0,0,0,0.4)"; mBox.style.padding="10px"; mBox.style.border="1px solid #38bdf8"; mBox.style.textAlign="left"; mBox.innerHTML = q.manual_text; container.appendChild(mBox);
@@ -297,7 +334,7 @@ function renderQuestion() {
     };
     container.appendChild(pList); container.appendChild(go);
   }
-  // 9. 文章修正デバッグ (「性」だけでも正解！) ★スコア分散★
+  // 9. 文章修正デバッグ
   else if (type === "text_debug") {
     const max = 30; tiMaxPossible += max;
     const desc = document.createElement("p"); desc.style.fontSize="0.85rem"; desc.style.textAlign="left";
@@ -308,14 +345,13 @@ function renderQuestion() {
     const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="修正を適用";
     fixBtn.onclick = () => {
       saveHistory(); 
-      let val = input.value.trim();
-      let p = (val === "整合性" || val === "性") ? max : 0;
+      let val = input.value.trim(); let p = (val === "整合性" || val === "性") ? max : 0;
       if (p === max) { scores.leading += 10; scores.proof += 10; } else { scores.vulnerable += 15; }
       logAction(`Debug:${val}`, p, max); tiUserPoints += p; next();
     };
     container.appendChild(fixBtn);
   }
-  // 10. 木、矛盾、ルール適用、創造Ti ★スコア分散★
+  // 10. 木、矛盾、ルール適用、創造Ti
   else if (type === "logic_tree") {
     const max = 35; tiMaxPossible += max;
     const treeF = document.createElement("div"); treeF.className="folder"; treeF.style.width="95%"; treeF.innerHTML="<b>食べ物</b>";
@@ -433,28 +469,21 @@ function showResult() {
     <button class="choice-btn" data-html2canvas-ignore="true" style="margin-top:20px; border:2px solid #38bdf8;" onclick="location.reload()">再研究（もう一度遊ぶ）</button>
   `;
 
-  // --- GASへデータ送信 ---
   if (GAS_URL && GAS_URL.startsWith("http")) {
     fetch(GAS_URL, {
-      method: 'POST',
-      body: JSON.stringify({
-        selfId: selfId, strength: str, resultType: map[high], actionLog: actionLog
-      }),
-      headers: { 'Content-Type': 'application/json' },
-      mode: 'no-cors'
+      method: 'POST', body: JSON.stringify({ selfId: selfId, strength: str, resultType: map[high], actionLog: actionLog }),
+      headers: { 'Content-Type': 'application/json' }, mode: 'no-cors'
     }).catch(e => console.log("GAS Send Error:", e));
   }
 
-  // --- ボタンリスナー ---
   document.getElementById('save-img-btn').onclick = () => {
     html2canvas(document.querySelector('.glass-container'), {backgroundColor: '#0f172a'}).then(canvas => {
       let link = document.createElement('a'); link.download = 'ti-checker-result.png'; link.href = canvas.toDataURL(); link.click();
     });
   };
   document.getElementById('share-btn').onclick = () => {
-    if (navigator.share) {
-      navigator.share({ title: 'ソシオTi強度チェッカー', text: `【論理研究室】\n私のTi強度は${str}%、推定配置は【${map[high]}】でした！\n#ソシオニクス\n`, url: window.location.href });
-    } else { alert("お使いのブラウザは共有機能に対応していません。"); }
+    if (navigator.share) navigator.share({ title: 'ソシオTi強度チェッカー', text: `【論理研究室】\n私のTi強度は${str}%、推定配置は【${map[high]}】でした！\n#ソシオニクス\n`, url: window.location.href });
+    else alert("お使いのブラウザは共有機能に対応していません。");
   };
   document.getElementById('copy-log-btn').onclick = () => {
     navigator.clipboard.writeText("【システム詳細ログ】\n" + actionLog.join("\n")).then(() => { alert("詳細ログをコピーしました！"); });
