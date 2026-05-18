@@ -437,7 +437,7 @@ function renderQuestion() {
   }
   // 10. 木、矛盾、ルール適用、創造Ti
   else if (type === "logic_tree") {
-    const max = 35; tiMaxPossible += max;
+    tiMaxPossible += 35;
     const treeF = document.createElement("div"); treeF.className="folder"; treeF.style.width="95%"; treeF.innerHTML="<b>食べ物</b>";
     const treeP = document.createElement("div"); treeP.style.padding="10px"; treeP.style.display="flex"; treeP.style.gap="8px"; treeP.style.flexWrap="wrap";
     ["いちご","トマト","草","耳のキノコ","脇のもやし"].forEach(tx => {
@@ -446,12 +446,20 @@ function renderQuestion() {
       treeP.appendChild(item);
     });
     const ok = document.createElement("button"); ok.className="choice-btn"; ok.innerText="確定";
-    ok.onclick = () => { 
+    ok.onclick = () => {
       saveHistory(); 
-      const count = treeF.querySelectorAll('.draggable-item').length;
-      let p = (count >= 4) ? max : (count > 0 ? 15 : 0);
-      if (p === max) { scores.leading += 15; scores.mobilizing += 25; } else if (p > 0) { scores.normative += 15; } else { scores.vulnerable += 20; }
-      logAction("Tree", p, max); tiUserPoints += p; next(); 
+      const inFolder = Array.from(treeF.querySelectorAll('.draggable-item')).map(el => el.innerText);
+      let p = 0; let msg = "";
+      // トマトといちごだけ ＝ 主導Ti
+      if (inFolder.length === 2 && inFolder.includes("いちご") && inFolder.includes("トマト")) {
+        scores.leading += 30; p = 35; msg = "厳密な分類(主導Ti)";
+      } 
+      // 耳のキノコなど変なものを含む ＝ 創造Ti
+      else if (inFolder.includes("耳のキノコ") || inFolder.includes("脇のもやし")) {
+        scores.creative += 30; p = 35; msg = "ユーモアな分類(創造Ti)";
+      } 
+      else { scores.vulnerable += 20; p = 10; msg = "不完全な分類"; }
+      tiUserPoints += p; logAction(msg, p, 35); next();
     };
     container.appendChild(treeF); container.appendChild(treeP); container.appendChild(ok);
   }
@@ -536,7 +544,7 @@ function showResult() {
   // scoresに存在するキーだけで判定（undefined対策）
   const validKeys = ["leading", "creative", "normative", "vulnerable", "suggestive", "proof", "mobilizing", "ignoring"];
   let high = validKeys.reduce((a, b) => scores[a] > scores[b] ? a : b);
-  
+
   // マップ（8機能＋α）
   const map = { 
     leading: "主導Ti (LII/LSI)", 
