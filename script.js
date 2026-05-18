@@ -654,11 +654,29 @@ function showResult() {
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
+  // 1. Ti強度（％）を計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
-  
-  // scoresに存在するキーだけで判定（undefined対策）
-  const validKeys = ["leading", "creative", "normative", "vulnerable", "suggestive", "proof", "mobilizing", "ignoring"];
-  let high = validKeys.reduce((a, b) => scores[a] > scores[b] ? a : b);
+
+  // 2. 判定用スコアの調整
+  let finalScores = { ...scores };
+
+  // 【厳格化：主導Tiの門番】
+  // 強度が82%未満なら、leadingスコアを「マイナス無限大」にして、絶対1位にさせない
+  if (str < 82) {
+    finalScores.leading = -99999;
+    actionLog.push(`[判定補正] 強度不足(${str}%)につき主導Tiを失格処分。`);
+  }
+
+  // 【動員・暗示の救済】
+  // 強度が低い〜中くらい(40-80%)で、mobilizingやsuggestiveが少しでもあれば優先する
+  if (str < 85) {
+    if (finalScores.mobilizing > 0) finalScores.mobilizing += 50; 
+    if (finalScores.suggestive > 0) finalScores.suggestive += 50;
+  }
+
+  // 改めて、スコアが最も高い機能を選択
+  const validKeys = ["leading", "creative", "normative", "vulnerable", "suggestive", "proof", "mobilizing", "ignoring", "fe_lead", "se_lead"];
+  let high = validKeys.reduce((a, b) => (finalScores[a] || 0) > (finalScores[b] || 0) ? a : b);
 
   // マップ（8機能＋α）
   const map = { 
