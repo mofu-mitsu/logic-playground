@@ -188,23 +188,33 @@ function renderQuestion() {
       const btn = document.createElement("button");
       btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
 
-      btn.onclick = () => { 
+        btn.onclick = () => {
         saveHistory();
-        
-        // --- ★ここでも同じ重み付けロジック★ ---
+        let p = c.score || 0;
+
+        // 次元数による強度重み（再較正）
         const tiStrengthWeights = {
-          leading: 1.0, proof: 0.9, creative: 0.8, ignoring: 0.7,
-          mobilizing: 0.5, normative: 0.4, suggestive: 0.2, vulnerable: 0.1
+            leading: 1.0,    // 4D：主導
+            proof: 1.0,      // 4D：証明（ここも1.0にしないと強度が下がる！）
+            creative: 0.8,
+            ignoring: 0.8,
+            mobilizing: 0.6,
+            normative: 0.5,
+            suggestive: 0.4,
+            vulnerable: 0.2
         };
 
         // 性格スコア加算
-        scores[c.f] += c.s; 
+        if(scores[c.func] !== undefined) scores[c.func] += p;
 
-        // 強度スコア加算（重み付け）
-        const weight = tiStrengthWeights[c.f] || 0;
-        const weightedScore = c.s * weight;
+        // 強度加算：その選択肢が Leading なら、その問題の最高得点(max)として加算する
+        const weight = tiStrengthWeights[c.func] || 0;
+        let weightedScore = p * weight;
+        
+        // 【救済】Leadingなのに他の機能より点数が低い不整合を防止
+        if (c.func === "leading") weightedScore = max; 
+        
         tiUserPoints += weightedScore;
-        // --- ★ここまで★ ---
 
         logAction(c.t.substring(0,6), weightedScore, max); next(); 
       };
@@ -223,24 +233,33 @@ function renderQuestion() {
       const btn = document.createElement("button");
       btn.className = "choice-btn"; btn.innerText = c.text;
 
-      btn.onclick = () => {
+        btn.onclick = () => {
         saveHistory();
         let p = c.score || 0;
 
-        // --- ★ここから重み付けロジック★ ---
+        // 次元数による強度重み（再較正）
         const tiStrengthWeights = {
-          leading: 1.0, proof: 0.9, creative: 0.8, ignoring: 0.7,
-          mobilizing: 0.5, normative: 0.4, suggestive: 0.2, vulnerable: 0.1
+            leading: 1.0,    // 4D：主導
+            proof: 1.0,      // 4D：証明（ここも1.0にしないと強度が下がる！）
+            creative: 0.8,
+            ignoring: 0.8,
+            mobilizing: 0.6,
+            normative: 0.5,
+            suggestive: 0.4,
+            vulnerable: 0.2
         };
 
-        // 1. 性格スコア（配置判定）にはそのまま加算
+        // 性格スコア加算
         if(scores[c.func] !== undefined) scores[c.func] += p;
 
-        // 2. Ti強度（％）には重みをかけて加算
+        // 強度加算：その選択肢が Leading なら、その問題の最高得点(max)として加算する
         const weight = tiStrengthWeights[c.func] || 0;
-        const weightedScore = p * weight;
+        let weightedScore = p * weight;
+        
+        // 【救済】Leadingなのに他の機能より点数が低い不整合を防止
+        if (c.func === "leading") weightedScore = max; 
+        
         tiUserPoints += weightedScore;
-        // --- ★ここまで★ ---
 
         logAction(c.text.substring(0,10), weightedScore, max); 
         next(); 
@@ -513,24 +532,11 @@ function showResult() {
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
-  let finalScores = { ...scores };
-
-  // 【主導Tiの厳格な門番】
-  if (str < 82) { // 82%未満は主導失格
-    finalScores.leading = -100; // 候補から完全に消す
-    actionLog.push(`[判定システム] 強度不足（${str}%）のため主導Tiを除外。`);
-  }
-
-  // 【動員・暗示の優先救済ロジック】
-  // 強度が中〜低（40-80%）で、mobilizingやsuggestiveがある程度選ばれていれば、
-  // 能力スコア（proofやnormative）よりもそちらを優先して表示する。
-  if (str < 85) {
-    if (finalScores.mobilizing > 10) finalScores.mobilizing += 20;
-    if (finalScores.suggestive > 10) finalScores.suggestive += 20;
-  }
-
-  let high = Object.keys(finalScores).reduce((a, b) => finalScores[a] > finalScores[b] ? a : b);
-
+  
+  // scoresに存在するキーだけで判定（undefined対策）
+  const validKeys = ["leading", "creative", "normative", "vulnerable", "suggestive", "proof", "mobilizing", "ignoring"];
+  let high = validKeys.reduce((a, b) => scores[a] > scores[b] ? a : b);
+  
   // マップ（8機能＋α）
   const map = { 
     leading: "主導Ti (LII/LSI)", 
