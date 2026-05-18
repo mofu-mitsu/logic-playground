@@ -398,7 +398,7 @@ function renderQuestion() {
       const rb = document.createElement("button"); rb.className="choice-btn"; rb.innerText=r.text;
       rb.onclick = () => {
         saveHistory(); let p = (r.id === "C") ? max : 0;
-        if (p === max) { scores.leading += 5; scores.ignoring += 25; scores.proof += 15; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
+        if (p === max) { scores.leading += 5; scores.ignoring += 5; scores.proof += 5; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
         logAction(`Paradox:${r.id}`, p, max); tiUserPoints += p; next();
       };
       container.appendChild(rb);
@@ -468,20 +468,23 @@ function showResult() {
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
-  // 1. Ti強度（0-100%）を計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
-
-  // 2. スコアをコピーして判定用のオブジェクトを作る
   let finalScores = { ...scores };
 
-  // 3. 【最重要：主導Tiの門番】
-  // 強度が80%未満、あるいは適当プレイ（vulnerableが高い）なら主導Tiから除外
-  if (str < 80 || scores.vulnerable > scores.leading) {
-    finalScores.leading = -1; // leadingを候補から消す
-    actionLog.push(`[判定システム] 強度不足（${str}%）のため主導Tiを除外しました。`);
+  // 【主導Tiの厳格な門番】
+  if (str < 82) { // 82%未満は主導失格
+    finalScores.leading = -100; // 候補から完全に消す
+    actionLog.push(`[判定システム] 強度不足（${str}%）のため主導Tiを除外。`);
   }
 
-  // 4. 改めて最高得点の機能を探す
+  // 【動員・暗示の優先救済ロジック】
+  // 強度が中〜低（40-80%）で、mobilizingやsuggestiveがある程度選ばれていれば、
+  // 能力スコア（proofやnormative）よりもそちらを優先して表示する。
+  if (str < 85) {
+    if (finalScores.mobilizing > 10) finalScores.mobilizing += 20;
+    if (finalScores.suggestive > 10) finalScores.suggestive += 20;
+  }
+
   let high = Object.keys(finalScores).reduce((a, b) => finalScores[a] > finalScores[b] ? a : b);
 
   // マップ（8機能＋α）
