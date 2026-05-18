@@ -150,141 +150,108 @@ setInterval(() => {
   }
 }, 13000);
 
-/* --- メインレンダリング --- */
 function renderQuestion() {
-  clearDocListeners(); // 問題切り替え時に透明なゴミを完全消去
-
+  clearDocListeners(); 
   const container = document.getElementById("question-container");
-  container.innerHTML = ""; container.style.border = ""; container.style.background = "";
+  container.innerHTML = "";
+  container.style.border = ""; container.style.background = "";
   questionStartTime = Date.now();
 
   if (currentQ >= questions.length) return processLoading("全論理データを構造化中...", showResult);
 
-  const qIndex = questionOrder[currentQ]; const q = questions[qIndex]; const type = q.type.trim();
+  const qIndex = questionOrder[currentQ];
+  const q = questions[qIndex];
+  const type = q.type.trim();
 
-  const prog = document.createElement("div"); prog.style.textAlign = "right"; prog.style.color = "#38bdf8"; prog.style.fontSize = "0.75rem"; prog.style.marginBottom = "5px";
-  prog.innerText = `[ 工程: ${currentQ + 1} / ${questions.length} ]`; container.appendChild(prog);
+  // 進捗
+  const prog = document.createElement("div");
+  prog.style.textAlign = "right"; prog.style.color = "#38bdf8"; prog.style.fontSize = "0.75rem";
+  prog.innerText = `[ 工程: ${currentQ + 1} / ${questions.length} ]`;
+  container.appendChild(prog);
 
-  const title = document.createElement("h3"); title.innerHTML = q.text; container.appendChild(title);
+  const title = document.createElement("h3");
+  title.innerHTML = q.text;
+  container.appendChild(title);
 
-  // 1. 介入
-// --- 2箇所目：ダーリンちゃん介入 ---
+  // 強度計算用の次元重み（4D: 1.0 / 3D: 0.8 / 2D: 0.5 / 1D: 0.1）
+  const tiStrengthWeights = {
+    leading: 1.0, proof: 1.0, creative: 0.8, ignoring: 0.8,
+    mobilizing: 0.6, normative: 0.4, suggestive: 0.2, vulnerable: 0.1
+  };
+
+  // --- 1. ダーリン介入 (Q17) ---
   if (type === "darling_interception") {
-    const max = 30; 
-    tiMaxPossible += max * 1.0; // 分母加算
-
-    container.style.border = "2px solid #f472b6"; container.style.background = "rgba(190, 24, 93, 0.1)";
-    const msg = document.createElement("p"); 
-    msg.innerHTML = "<b style='color:#f472b6;'>ダーリンちゃん(ILI):</b><br>「ねえダーリン、こんな診断で君がわかると思ってるの？♡」"; 
+    const qMax = 40; tiMaxPossible += qMax; // この問題の満点は40点
+    container.style.border = "2px solid #f472b6";
+    container.style.background = "rgba(190, 24, 93, 0.1)";
+    const msg = document.createElement("p");
+    msg.innerHTML = "<b style='color:#f472b6;'>ダーリンちゃん(ILI):</b><br>「ねえダーリン、こんな診断で君がわかると思ってるの？♡」";
     container.appendChild(msg);
 
     const dChoices = [
-      { t: "定義さえ厳密なら全ては法則に収束する", f: "leading", s: 30 },
-      { t: "無理に決まってる。アラを探すのが楽しいだけ", f: "proof", s: 20 },
-      { t: "知らん。早く終わらせろ", f: "vulnerable", s: 30 } // 脆弱判定用に点数UP
+      { t: "定義さえ厳密なら全ては法則に収束する", f: "leading", s: 40 },
+      { t: "無理に決まってる。アラを探すのが楽しいだけ", f: "proof", s: 40 },
+      { t: "知らん。早く終わらせろ", f: "vulnerable", s: 50 }
     ];
-
     dChoices.forEach(c => {
       const btn = document.createElement("button");
       btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
-
-        btn.onclick = () => {
-        saveHistory();
-        let p = c.score || 0;
-
-        // 次元数による強度重み（再較正）
-        const tiStrengthWeights = {
-            leading: 1.0,    // 4D：主導
-            proof: 1.0,      // 4D：証明（ここも1.0にしないと強度が下がる！）
-            creative: 0.8,
-            ignoring: 0.8,
-            mobilizing: 0.6,
-            normative: 0.5,
-            suggestive: 0.4,
-            vulnerable: 0.2
-        };
-
-        // 性格スコア加算
-        if(scores[c.func] !== undefined) scores[c.func] += p;
-
-        // 強度加算：その選択肢が Leading なら、その問題の最高得点(max)として加算する
-        const weight = tiStrengthWeights[c.func] || 0;
-        let weightedScore = p * weight;
-        
-        // 【救済】Leadingなのに他の機能より点数が低い不整合を防止
-        if (c.func === "leading") weightedScore = max; 
-        
-        tiUserPoints += weightedScore;
-
-        logAction(c.t.substring(0,6), weightedScore, max); next(); 
+      btn.onclick = () => {
+        saveHistory(); scores[c.f] += c.s;
+        // Leading/Proofなら満点加算
+        let p = (c.f === "leading" || c.f === "proof") ? qMax : (c.s * tiStrengthWeights[c.f]);
+        tiUserPoints += p;
+        logAction(c.t.substring(0,6), Math.round(p), qMax); next();
       };
       container.appendChild(btn);
     });
+    return; // 介入時はスキップボタン等を出さない
   }
-  // 2. 選択肢
-  else if (["choice", "time_trap", "strawberry_logic", "emotion_logic", "unresolved_logic", "diogenes_trap", "suggestive_ti", "ti_valued_check", "mobilizing_ti_gimmick"].includes(type)) {
-    const max = Math.max(...q.choices.map(c => c.score || 0)); 
-    
-    // 【重要】この問題で取れる最大強度を分母に足す（leadingの重み1.0で計算）
-    tiMaxPossible += max * 1.0; 
 
-    const shuffledChoices = [...q.choices].sort(() => Math.random() - 0.5);
-    shuffledChoices.forEach(c => {
+  // --- 2. 通常の選択肢系 ---
+  else if (["choice", "time_trap", "strawberry_logic", "emotion_logic", "unresolved_logic", "diogenes_trap", "suggestive_ti", "ti_valued_check", "mobilizing_ti_gimmick"].includes(type)) {
+    const qMax = Math.max(...q.choices.map(c => c.score || 0));
+    tiMaxPossible += qMax;
+    const shuffled = [...q.choices].sort(() => Math.random() - 0.5);
+    shuffled.forEach(c => {
       const btn = document.createElement("button");
       btn.className = "choice-btn"; btn.innerText = c.text;
-
-        btn.onclick = () => {
+      btn.onclick = () => {
         saveHistory();
-        let p = c.score || 0;
+        const elapsed = Date.now() - questionStartTime;
+        if (elapsed < 1200) scores.vulnerable += 20; 
 
-        // 次元数による強度重み（再較正）
-        const tiStrengthWeights = {
-            leading: 1.0,    // 4D：主導
-            proof: 1.0,      // 4D：証明（ここも1.0にしないと強度が下がる！）
-            creative: 0.8,
-            ignoring: 0.8,
-            mobilizing: 0.6,
-            normative: 0.5,
-            suggestive: 0.4,
-            vulnerable: 0.2
-        };
+        scores[c.func] += c.score;
+        // 強度計算（主導・証明は分母の満点を与える）
+        let p = (c.func === "leading" || c.func === "proof") ? qMax : (c.score * (tiStrengthWeights[c.func] || 0));
+        tiUserPoints += p;
 
-        // 性格スコア加算
-        if(scores[c.func] !== undefined) scores[c.func] += p;
-
-        // 強度加算：その選択肢が Leading なら、その問題の最高得点(max)として加算する
-        const weight = tiStrengthWeights[c.func] || 0;
-        let weightedScore = p * weight;
-        
-        // 【救済】Leadingなのに他の機能より点数が低い不整合を防止
-        if (c.func === "leading") weightedScore = max; 
-        
-        tiUserPoints += weightedScore;
-
-        logAction(c.text.substring(0,10), weightedScore, max); 
-        next(); 
+        logAction(c.text.substring(0,10), Math.round(p), qMax); next();
       };
       container.appendChild(btn);
     });
   }
-  // 3. スライダー
+
+  // --- 3. スライダー (Q2) ---
   else if (type === "slider") {
-    const max = 40; tiMaxPossible += max;
+    const qMax = 40; tiMaxPossible += qMax;
     const sli = document.createElement("input"); sli.type="range"; sli.min="0"; sli.max="100"; sli.step="0.1"; sli.value="12.5";
-    const val = document.createElement("div"); val.className="slider-value"; val.innerText="12.5";
-    sli.oninput = (e) => val.innerText = parseFloat(e.target.value).toFixed(1);
+    const valDisp = document.createElement("div"); valDisp.className="slider-value"; valDisp.innerText="12.5";
+    sli.oninput = (e) => valDisp.innerText = parseFloat(e.target.value).toFixed(1);
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="値を確定";
     btn.onclick = () => {
-      saveHistory(); const v = parseFloat(sli.value);
-      let p = (v === 50.0) ? 40 : (Math.abs(v - 50) <= 1.0 ? 20 : 0);
-      if (v === 50.0) { scores.leading += 20; scores.proof += 10; } else if (p > 0) scores.normative += 15; else scores.vulnerable += 10;
-      logAction(`Slider:${v}`, p, max); tiUserPoints += p; next();
+      saveHistory();
+      const v = parseFloat(sli.value);
+      let p = (v === 50.0) ? qMax : (Math.abs(v - 50) <= 1.0 ? 20 : 0);
+      if (v === 50.0) scores.leading += 30; else if (p > 0) scores.normative += 20; else scores.vulnerable += 30;
+      tiUserPoints += p; logAction(`Slider:${v}`, p, qMax); next();
     };
-    container.appendChild(sli); container.appendChild(val); container.appendChild(btn);
+    container.appendChild(sli); container.appendChild(valDisp); container.appendChild(btn);
   }
-  // 4. ズレ直し
+
+  // --- 4. ズレ直し (Q3) ---
   else if (type === "align_fix") {
-    const max = 30; tiMaxPossible += max;
+    const qMax = 30; tiMaxPossible += qMax;
     const wrap = document.createElement("div"); wrap.style.display="flex"; wrap.style.justifyContent="center"; wrap.style.gap="15px"; wrap.style.margin="25px 0";
     let fixed = false;
     for (let i = 0; i < 4; i++) {
@@ -294,19 +261,21 @@ function renderQuestion() {
     }
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="次へ";
     btn.onclick = () => {
-      saveHistory(); let p = fixed ? 30 : 0;
-      if (fixed) { scores.leading += 10; scores.normative += 10; } else { scores.vulnerable += 15; }
-      logAction(fixed?"ズレ修正":"放置", p, max); tiUserPoints += p; next();
+      saveHistory();
+      if (fixed) { scores.leading += 25; tiUserPoints += qMax; } else { scores.vulnerable += 30; }
+      logAction(fixed?"ズレ修正":"放置", fixed ? qMax : 0, qMax); next();
     };
     container.appendChild(wrap); container.appendChild(btn);
   }
-  // 5. 自由配置
+
+  // --- 5. 自由配置 (Q7) ---
   else if (type === "align_free") {
-    const max = 30; tiMaxPossible += max;
-    const area = document.createElement("div"); area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px"; area.style.overflowX="hidden";
+    const qMax = 30; tiMaxPossible += qMax;
+    const area = document.createElement("div"); area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px";
     const boxes = [];
     for (let i = 0; i < 4; i++) {
-      const b = document.createElement("div"); b.className = "align-box"; b.style.position="absolute"; b.style.top = (i * 45) + "px"; b.style.left = (i * 45) + "px";
+      const b = document.createElement("div"); b.className = "align-box"; b.style.position="absolute";
+      b.style.top = (i * 45) + "px"; b.style.left = (i * 45) + "px";
       setupDraggable(b, (x, y, el) => {
         const r = area.getBoundingClientRect(); el.style.position = 'absolute';
         el.style.left = Math.min(Math.max(x - r.left - 25, 0), r.width - 50) + "px"; el.style.top = Math.min(Math.max(y - r.top - 25, 0), r.height - 50) + "px";
@@ -316,24 +285,23 @@ function renderQuestion() {
     }
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="この配置で確定";
     btn.onclick = () => {
-      saveHistory(); let corners = 0; let yC = []; let xC = [];
+      saveHistory();
+      let corners = 0; let yC = []; let xC = [];
       boxes.forEach(b => {
         const l = parseInt(b.style.left), t = parseInt(b.style.top); yC.push(t); xC.push(l);
         if ((l < 50 || l > area.offsetWidth - 80) && (t < 50 || t > area.offsetHeight - 80)) corners++;
       });
-      const dY = Math.max(...yC) - Math.min(...yC); const dX = Math.max(...xC) - Math.min(...xC);
-      let isAligned = (dY < 20 || dX < 20); 
-      let p = 0; let msg = "";
-      if (corners >= 3) { p = 30; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 20; }
-      else if (isAligned) { p = 30; msg = "綺麗に整列(Ti)"; scores.leading += 15; scores.normative += 10; }
-      else { p = 10; msg = "適当な配置"; scores.vulnerable += 15; }
-      logAction(msg, p, max); tiUserPoints += p; next();
+      const isAligned = (Math.max(...yC) - Math.min(...yC) < 20 || Math.max(...xC) - Math.min(...xC) < 20);
+      let p = (isAligned || corners >= 3) ? qMax : 10;
+      if (corners >= 3) { scores.creative += 25; seFlag = true; } else if (isAligned) { scores.leading += 25; } else { scores.vulnerable += 20; }
+      tiUserPoints += p; logAction(isAligned?"整列(Ti)": (corners>=3?"四隅(Se)":"適当"), p, qMax); next();
     };
     container.appendChild(area); container.appendChild(btn);
   }
-  // 6. 二重分類
+
+  // --- 6. 二重分類 (Q6) ---
   else if (type === "classification") {
-    const max = 40; tiMaxPossible += max;
+    const qMax = 40; tiMaxPossible += qMax;
     const wrap = document.createElement("div"); wrap.className="folder-wrap";
     const f1 = document.createElement("div"); f1.className="folder"; f1.id="v-folder"; f1.innerHTML="<b>野菜</b>";
     const f2 = document.createElement("div"); f2.className="folder"; f2.id="f-folder"; f2.innerHTML="<b>果物</b>";
@@ -347,57 +315,39 @@ function renderQuestion() {
       pool.appendChild(it);
     });
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="分類を終了";
-    btn.onclick = () => { 
-      saveHistory(); 
-      const moved = f1.children.length + f2.children.length - 2; 
-      let p = (moved > 0) ? max : 0;
-      if (p === max) { scores.leading += 20; scores.proof += 10; } else { scores.vulnerable += 20; }
-      logAction("仕分け終了", p, max); tiUserPoints += p; next(); 
-    };
+    btn.onclick = () => { saveHistory(); tiUserPoints += qMax; scores.leading += 20; logAction("仕分け完了", qMax, qMax); next(); };
     wrap.appendChild(f1); wrap.appendChild(f2); container.appendChild(wrap); container.appendChild(pool); container.appendChild(btn);
   }
-  // 7. 境界線 (バグ完全修正)
+
+  // --- 7. 境界線 (Q9) ---
   else if (type === "black_white_boundary") {
-    const max = 35; tiMaxPossible += max;
+    const qMax = 35; tiMaxPossible += qMax;
     const bar = document.createElement("div"); bar.className="gradient-bar";
     const handle = document.createElement("div"); handle.className="boundary-handle"; handle.style.left="5%"; bar.appendChild(handle);
-    let active = false; let clicked = false;
-    
-    const moveLine = (e) => {
-      if(!active) return;
-      if(e.cancelable && e.type === "touchmove") e.preventDefault(); // スクロール防止
-      const x = e.touches ? e.touches[0].clientX : e.clientX; const r = bar.getBoundingClientRect();
-      let p = x - r.left; if(p < 0) p = 0; if(p > r.width) p = r.width;
-      handle.style.left = p + "px"; handle.dataset.val = (p / r.width) * 100;
+    let clicked = false;
+    handle.onmousedown = handle.ontouchstart = (e) => { 
+      clicked = true;
+      const move = (me) => {
+        const mx = me.touches ? me.touches[0].clientX : me.clientX; const r = bar.getBoundingClientRect();
+        let p = mx - r.left; if(p<0)p=0; if(p>r.width)p=r.width;
+        handle.style.left = p + "px"; handle.dataset.val = (p/r.width)*100;
+      };
+      const stop = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", stop); document.removeEventListener("touchmove", move); document.removeEventListener("touchend", stop); };
+      document.addEventListener("mousemove", move); document.addEventListener("mouseup", stop); document.addEventListener("touchmove", move, {passive:false}); document.addEventListener("touchend", stop);
     };
-    const endLine = () => { 
-      active = false; clearDocListeners(); 
-    };
-    const startLine = (e) => { 
-      active = true; clicked = true; 
-      if(e.type==="mousedown") e.preventDefault();
-      addDocListener("mousemove", moveLine, {passive: false});
-      addDocListener("touchmove", moveLine, {passive: false});
-      addDocListener("mouseup", endLine, false);
-      addDocListener("touchend", endLine, false);
-    };
-    
-    handle.addEventListener("mousedown", startLine); handle.addEventListener("touchstart", startLine, {passive: false});
-
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="境界を確定";
     btn.onclick = () => {
-      saveHistory(); clearDocListeners(); // 強制掃除
-      let v = parseFloat(handle.dataset.val || 5); let p = 0;
-      if (!clicked) { scores.vulnerable += 20; logAction("動かさず確定", 0, max); }
-      else if (v > 88) { p = 35; scores.leading += 20; scores.proof += 10; logAction(`B-Line:${v.toFixed(1)}%`, p, max); }
-      else { p = 15; scores.normative += 15; logAction(`B-Line:${v.toFixed(1)}%`, p, max); }
-      tiUserPoints += p; next();
+      saveHistory(); let v = parseFloat(handle.dataset.val || 5);
+      let p = (clicked && v > 89) ? qMax : 10;
+      if (v > 89) scores.leading += 25; else scores.normative += 20;
+      tiUserPoints += p; logAction(`B-Line:${v.toFixed(1)}%`, p, qMax); next();
     };
     container.appendChild(bar); container.appendChild(btn);
   }
-  // 8. 説明書
+
+  // --- 8. 説明書 (Q12) ---
   else if (type === "manual_gimmick") {
-    const max = 50; tiMaxPossible += max;
+    const qMax = 50; tiMaxPossible += qMax;
     const mBox = document.createElement("div"); mBox.style.fontSize="0.75rem"; mBox.style.background="rgba(0,0,0,0.4)"; mBox.style.padding="10px"; mBox.style.border="1px solid #38bdf8"; mBox.style.textAlign="left"; mBox.innerHTML = q.manual_text; container.appendChild(mBox);
     const pList = document.createElement("div"); pList.style.display="flex"; pList.style.flexDirection="column"; pList.style.gap="8px"; pList.style.margin="15px 0";
     let order = 1;
@@ -412,32 +362,32 @@ function renderQuestion() {
     const go = document.createElement("button"); go.className="choice-btn"; go.innerText="この手順で実行";
     go.onclick = () => {
       saveHistory(); const firstStep = Array.from(pList.children).find(el => el.dataset.order === "1");
-      let p = (firstStep && firstStep.innerText.includes("フィルム")) ? max : 10;
-      if (p === max) { scores.leading += 20; scores.proof += 10; } else { scores.vulnerable += 20; scores.suggestive += 10; }
-      logAction("Manual", p, max); tiUserPoints += p; next();
+      let p = (firstStep && firstStep.innerText.includes("フィルム")) ? qMax : 0;
+      if (p === qMax) scores.leading += 30; else scores.vulnerable += 30;
+      tiUserPoints += p; logAction("Manual", p, qMax); next();
     };
     container.appendChild(pList); container.appendChild(go);
   }
-  // 9. 文章修正デバッグ
+
+  // --- 9. 文章修正デバッグ (Q19) ---
   else if (type === "text_debug") {
-    const max = 30; tiMaxPossible += max;
-    const desc = document.createElement("p"); desc.style.fontSize="0.85rem"; desc.style.textAlign="left";
-    desc.innerHTML = "<b>※指示：</b> 文中にある間違いを見つけ、正しい漢字に直して入力してください。"; container.appendChild(desc);
+    const qMax = 30; tiMaxPossible += qMax;
     const qText = document.createElement("p"); qText.style.background="rgba(255,255,255,0.05)"; qText.style.padding="10px"; qText.style.textAlign="left";
     qText.innerText = "「論理的な整合せいが保たれていないシステムは、いずれ崩壊する。例外を放置することは、定義の曖昧さを許容することだ。」"; container.appendChild(qText);
     const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい漢字を入力してください"; container.appendChild(input);
     const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="修正を適用";
     fixBtn.onclick = () => {
-      saveHistory(); 
-      let val = input.value.trim(); let p = (val === "整合性" || val === "性") ? max : 0;
-      if (p === max) { scores.leading += 10; scores.normative += 10;  scores.proof += 15; } else { scores.vulnerable += 20; scores.ignoring += 10; }
-      logAction(`Debug:${val}`, p, max); tiUserPoints += p; next();
+      saveHistory(); let val = input.value.trim();
+      let p = (val === "整合性" || val === "性") ? qMax : 0;
+      if (p === qMax) scores.leading += 25; else scores.vulnerable += 25;
+      tiUserPoints += p; logAction(`Debug:${val}`, p, qMax); next();
     };
     container.appendChild(fixBtn);
   }
-  // 10. 木、矛盾、ルール適用、創造Ti
+
+  // --- 10. 情報の木 (Q13) ---
   else if (type === "logic_tree") {
-    tiMaxPossible += 35;
+    const qMax = 35; tiMaxPossible += qMax;
     const treeF = document.createElement("div"); treeF.className="folder"; treeF.style.width="95%"; treeF.innerHTML="<b>食べ物</b>";
     const treeP = document.createElement("div"); treeP.style.padding="10px"; treeP.style.display="flex"; treeP.style.gap="8px"; treeP.style.flexWrap="wrap";
     ["いちご","トマト","草","耳のキノコ","脇のもやし"].forEach(tx => {
@@ -450,83 +400,62 @@ function renderQuestion() {
       saveHistory(); 
       const inFolder = Array.from(treeF.querySelectorAll('.draggable-item')).map(el => el.innerText);
       let p = 0; let msg = "";
-      // トマトといちごだけ ＝ 主導Ti
-      if (inFolder.length === 2 && inFolder.includes("いちご") && inFolder.includes("トマト")) {
-        scores.leading += 30; p = 35; msg = "厳密な分類(主導Ti)";
-      } 
-      // 耳のキノコなど変なものを含む ＝ 創造Ti
-      else if (inFolder.includes("耳のキノコ") || inFolder.includes("脇のもやし")) {
-        scores.creative += 30; p = 35; msg = "ユーモアな分類(創造Ti)";
-      } 
+      if (inFolder.length === 2 && inFolder.includes("いちご") && inFolder.includes("トマト")) { scores.leading += 30; p = qMax; msg = "厳密な分類(主導Ti)"; } 
+      else if (inFolder.includes("耳のキノコ") || inFolder.includes("脇のもやし")) { scores.creative += 30; p = qMax; msg = "創造的分類(創造Ti)"; } 
       else { scores.vulnerable += 20; p = 10; msg = "不完全な分類"; }
-      tiUserPoints += p; logAction(msg, p, 35); next();
+      tiUserPoints += p; logAction(msg, p, qMax); next();
     };
     container.appendChild(treeF); container.appendChild(treeP); container.appendChild(ok);
   }
+
+  // --- 11. 創造Tiギミック (Q20) ---
+  else if (type === "creative_ti_gimmick") {
+    const qMax = 30; tiMaxPossible += qMax;
+    const slot = document.createElement("div"); slot.className="folder"; slot.id="exp-slot"; slot.style.width="95%"; slot.style.minHeight="80px"; slot.innerHTML="<b>【説明スロット(2つまで)】</b>";
+    const pArea = document.createElement("div"); pArea.style.display="flex"; pArea.style.flexDirection="column"; pArea.style.gap="5px"; pArea.style.margin="10px 0";
+    q.blocks.forEach(b => {
+      const item = document.createElement("div"); item.className="draggable-item"; item.style.display="block"; item.innerText=b.text; item.dataset.id = b.id;
+      setupDraggable(item, (x,y,el,target) => { if(target && target.closest("#exp-slot") && slot.querySelectorAll(".draggable-item").length < 2) slot.appendChild(el); else pArea.appendChild(el); el.style.position="static"; });
+      pArea.appendChild(item);
+    });
+    const finish = document.createElement("button"); finish.className="choice-btn"; finish.innerText="これで説明する";
+    finish.onclick = () => {
+      saveHistory(); const ids = Array.from(slot.querySelectorAll(".draggable-item")).map(el => el.dataset.id);
+      if (ids.includes("B") || ids.includes("C") || ids.includes("D")) { scores.creative += 30; tiUserPoints += qMax; logAction("創造的説明", qMax, qMax); }
+      else { scores.leading += 25; tiUserPoints += 20; logAction("主導的説明", 20, qMax); }
+      next();
+    };
+    container.appendChild(slot); container.appendChild(pArea); container.appendChild(finish);
+  }
+
+  // --- 12. パラドックス、ルール適用 ---
   else if (type === "paradox_gimmick") {
-    const max = 40; tiMaxPossible += max;
+    const qMax = 40; tiMaxPossible += qMax;
     q.rules.forEach(r => {
       const rb = document.createElement("button"); rb.className="choice-btn"; rb.innerText=r.text;
-      rb.onclick = () => {
-        saveHistory(); let p = (r.id === "C") ? max : 0;
-        if (p === max) { scores.leading += 5; scores.ignoring += 5; scores.proof += 5; scores.creative += 15; } else { scores.vulnerable += 20; scores.normative += 10; }
-        logAction(`Paradox:${r.id}`, p, max); tiUserPoints += p; next();
-      };
+      rb.onclick = () => { saveHistory(); let p = (r.id === "C") ? qMax : 0; if(p===qMax) scores.proof += 30; else scores.vulnerable += 30; tiUserPoints += p; logAction(`Paradox:${r.id}`, p, qMax); next(); };
       container.appendChild(rb);
     });
   }
   else if (type === "rule_application") {
-    const max = 45; tiMaxPossible += max;
-    const boxWrap = document.createElement("div"); boxWrap.style.display="flex"; boxWrap.style.flexWrap="wrap"; boxWrap.style.gap="10px";
-    ["A","B","C","D"].forEach(l => {
-      const b = document.createElement("div"); b.className="folder"; b.id="rule-"+l; b.style.width="45%"; b.style.minHeight="65px"; b.innerHTML=`<b>BOX ${l}</b>`; boxWrap.appendChild(b);
-    });
+    const qMax = 45; tiMaxPossible += qMax;
+    const w = document.createElement("div"); w.style.display="flex"; w.style.flexWrap="wrap"; w.style.gap="10px";
+    ["A","B","C","D"].forEach(l => { const box = document.createElement("div"); box.className="folder"; box.id="b-"+l; box.style.width="45%"; box.style.minHeight="60px"; box.innerHTML=`<b>BOX ${l}</b>`; w.appendChild(box); });
     const obj = document.createElement("div"); obj.className="draggable-item"; obj.innerText="青くて四角い物体";
-    setupDraggable(obj, (x,y,el,target) => { const targetBox = target ? target.closest(".folder") : null; if(targetBox) { targetBox.appendChild(el); el.style.position="static"; } });
-    container.appendChild(obj); container.appendChild(boxWrap);
-    const finish = document.createElement("button"); finish.className="choice-btn"; finish.innerText="適用完了";
-    finish.onclick = () => {
-      saveHistory(); const isCorrect = document.getElementById("rule-D").querySelector(".draggable-item");
-      let p = isCorrect ? max : 0; 
-      if (p === max) { scores.leading += 5; scores.leading += 5; scores.proof += 30; } else { scores.vulnerable += 20; scores.ignoring += 20; }
-      logAction(isCorrect?"Rule:OK":"Rule:NG", p, max); tiUserPoints += p; next();
-    };
-    container.appendChild(finish);
-  }
-  else if (type === "creative_ti_gimmick") {
-    const max = 30; tiMaxPossible += max;
-    const slot = document.createElement("div"); slot.className="folder"; slot.id="exp-slot"; slot.style.width="95%"; slot.style.minHeight="80px"; slot.innerHTML="<b>【説明用スロット(2つまで)】</b>";
-    const p = document.createElement("div"); p.style.display="flex"; p.style.flexDirection="column"; p.style.gap="5px"; p.style.margin="10px 0";
-    const shuffledBlocks = [...q.blocks].sort(() => Math.random() - 0.5);
-    shuffledBlocks.forEach(b => {
-      const item = document.createElement("div"); item.className="draggable-item"; item.style.display="block"; item.innerText=b.text; item.dataset.id = b.id;
-      setupDraggable(item, (x,y,el,target) => { if(target && target.closest("#exp-slot") && slot.children.length < 3) slot.appendChild(el); else p.appendChild(el); el.style.position="static"; });
-      p.appendChild(item);
-    });
-    const finish = document.createElement("button"); finish.className="choice-btn"; finish.innerText="この構成で説明する";
-    finish.onclick = () => {
-      saveHistory(); const inSlot = Array.from(slot.querySelectorAll(".draggable-item")).map(el => el.dataset.id);
-      let p_score = 15;
-      if (inSlot.includes("B") || inSlot.includes("C") || inSlot.includes("D")) { scores.creative += 20; scores.mobilizing += 20; p_score = max; logAction("相手に合わせた説明(創造Ti)", p_score, max); }
-      else { scores.leading += 20; logAction("厳密な説明(主導Ti)", p_score, max); }
-      tiUserPoints += p_score; next();
-    };
-    container.appendChild(slot); container.appendChild(p); container.appendChild(finish);
+    setupDraggable(obj, (x,y,el,target) => { const box = target ? target.closest(".folder") : null; if(box) { box.appendChild(el); el.style.position="static"; } });
+    container.appendChild(obj); container.appendChild(w);
+    const b = document.createElement("button"); b.className="choice-btn"; b.innerText="適用完了";
+    b.onclick = () => { saveHistory(); const ok = document.getElementById("b-D").querySelector(".draggable-item"); let p = ok ? qMax : 0; if(ok) scores.proof += 30; else scores.vulnerable += 30; tiUserPoints += p; logAction(ok?"Rule:OK":"Rule:NG", p, qMax); next(); };
+    container.appendChild(b);
   }
 
-  // --- フッター ---
+  // --- 共通フッター ---
   const footer = document.createElement("div"); footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.gap = "10px";
   const backBtn = document.createElement("button"); backBtn.className = "choice-btn"; backBtn.style.flex = "1"; backBtn.style.background = "rgba(255,255,255,0.05)";
   backBtn.innerHTML = "<i class='fa-solid fa-arrow-left'></i> 戻る"; backBtn.onclick = goBack;
   if (history.length === 0) backBtn.style.opacity = "0.3";
   const skipBtn = document.createElement("button"); skipBtn.className = "choice-btn"; skipBtn.style.flex = "2"; skipBtn.style.background = "rgba(100,116,139,0.2)";
-  skipBtn.innerHTML = "判定不能 / スキップ"; 
-  skipBtn.onclick = () => { 
-    saveHistory(); 
-    scores.vulnerable += 20; scores.ignoring += 10; 
-    logAction("Skip", 0, 0); 
-    next(); 
-  };
+  skipBtn.innerHTML = "判定不能 / スキップ"; skipBtn.onclick = () => { saveHistory(); scores.vulnerable += 30; logAction("Skip", 0, 0); next(); };
   footer.appendChild(backBtn); footer.appendChild(skipBtn); container.appendChild(footer);
 }
 
