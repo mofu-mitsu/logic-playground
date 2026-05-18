@@ -1,17 +1,17 @@
 const questions = [
-  {
+{
     id: 1,
     type: "choice",
     text: "あるルールの説明書に『明らかな矛盾』を見つけました。どうする？",
     choices: [
-      { text: "即座に矛盾を指摘し、定義から修正案を出す", func: "leading", score: 10 },
-      { text: "矛盾を利用して、自分に都合のいい解釈を作る", func: "creative", score: 8 },
-      { text: "気づくが、実害がなければ脳内で修正して放置する", func: "ignoring", score: 7 },
-      { text: "普段は黙っているが、誰かが間違えたら完璧に論証する", func: "proof", score: 9 },
-      { text: "一応報告するが、最終的な判断は場の空気に任せる", func: "normative", score: 4 },
-      { text: "矛盾に気づくとちょっとワクワクして、理由を分析する", func: "mobilizing", score: 6 },
-      { text: "「誰かこの矛盾を綺麗に整理して！」と丸投げする", func: "suggestive", score: 5 },
-      { text: "「例外くらいあるでしょ、めんどくさ…」と無視する", func: "vulnerable", score: 1 }
+      { text: "即座に矛盾を指摘し、定義から修正案を出す", func: "leading", score: 40 }, // 主導確定
+      { text: "矛盾を利用して、自分に都合のいい解釈を作る", func: "creative", score: 35 }, // 創造
+      { text: "気づくが、実害がなければ脳内で修正して放置する", func: "ignoring", score: 30 }, // 無視
+      { text: "普段は黙っているが、誰かが間違えたら完璧に論証する", func: "proof", score: 35 }, // 証明
+      { text: "一応報告するが、最終的な判断は場の空気に任せる", func: "normative", score: 25 }, // 規範
+      { text: "矛盾に気づくとちょっとワクワクして、理由を分析する", func: "mobilizing", score: 45 }, // 動員（IEI/SEIに多い！）
+      { text: "「誰かこの矛盾を綺麗に整理して！」と丸投げする", func: "suggestive", score: 45 }, // 暗示（ESE/EIEに多い！）
+      { text: "「例外くらいあるでしょ、めんどくさ…」と無視する", func: "vulnerable", score: 50 } // 脆弱（SEE/IEE確定）
     ]
   },
   {
@@ -31,8 +31,8 @@ const questions = [
     choices: [
       { text: "法律の『空飛ぶ』の定義による", func: "leading", score: 10 },
       { text: "動物園のペンギンは飛ばないので鳥のまま", func: "proof", score: 9 },
-      { text: "新しい法律だ！面白い！", func: "mobilizing", score: 6 },
-      { text: "知らん。魚じゃないだろ。", func: "vulnerable", score: 1 }
+      { text: "新しい法律だ！面白い！", func: "mobilizing", score: 15 },
+      { text: "知らん。魚じゃないだろ。", func: "vulnerable", score: 5 }
     ]
   },
   {
@@ -43,7 +43,7 @@ const questions = [
       { text: "まず『好き』の定義と『食べ物』の範囲を確認する", func: "leading", score: 10 },
       { text: "いちご（※ただし加工品に限る、等の注釈付き）と答える", func: "proof", score: 8 },
       { text: "無難なものを答えつつ、内心『不正確だな』と思う", func: "normative", score: 5 },
-      { text: "その時食べたいものを直感で答える。定義とかどうでもいい", func: "vulnerable", score: 1 }
+      { text: "その時食べたいものを直感で答える。定義とかどうでもいい", func: "vulnerable", score: 5 }
     ]
   },
   {
@@ -63,7 +63,7 @@ const questions = [
     choices: [
       { text: "『贈答行為』と『感謝のプロトコル』を照合し、正しく喜んでいるか確認する", func: "leading", score: 10 },
       { text: "嬉しい（はず）だが、その感情が客観的に妥当なものか気になる", func: "leading", score: 8 },
-      { text: "ただただ純粋に、心が温かくなるのを感じる", func: "vulnerable", score: 1 },
+      { text: "ただただ純粋に、心が温かくなるのを感じる", func: "vulnerable", score: 5 },
       { text: "相手が何を求めてこの品を選んだのか、意図を分析する", func: "creative", score: 7 }
     ]
   },
@@ -80,7 +80,7 @@ const questions = [
       { text: "自分が納得できる『暫定的な正解（システム）』を構築する", func: "leading", score: 10 },
       { text: "正解がないことが正解である、と論証を試みる", func: "proof", score: 9 },
       { text: "気持ち悪いので、とりあえずその場を離れる", func: "normative", score: 5 },
-      { text: "「正解なんて人それぞれでしょ〜」と笑って流す", func: "vulnerable", score: 1 }
+      { text: "「正解なんて人それぞれでしょ〜」と笑って流す", func: "vulnerable", score: 5 }
     ]
   },
   {
@@ -90,7 +90,7 @@ const questions = [
     choices: [
       { text: "『野菜』という言葉の指示対象と時間の概念が混同されていると分析する", func: "leading", score: 10 },
       { text: "じゃあ何？と聞き返し、納得できるまで新しい定義を求める", func: "proof", score: 9 },
-      { text: "…要するに、ただの『草』ってことでしょ？（投げ捨てる）", func: "vulnerable", score: 1 }, 
+      { text: "…要するに、ただの『草』ってことでしょ？（投げ捨てる）", func: "creative", score: 1 }, 
       { text: "意味がわからない。何が言いたいのか理解を拒む", func: "vulnerable", score: 2 } 
     ]
   },
@@ -116,10 +116,10 @@ const questions = [
     type: "suggestive_ti",
     text: "【安心感の源泉（暗示機能テスト）】<br>自分のキャパを超えて頭がパンクしそうな時、あなたが『自分にはできないから、誰かにこうして救ってほしい！』と一番強く願う対応はどれ？",
     choices: [
-      { text: "【論理的整理】自分の感情論をバッサリ切り捨てて、状況を客観的で簡潔な『システム（図や法則）』に整理し直してほしい", func: "suggestive", score: 15 }, // EIE/ESE
-      { text: "【感情的包容】理屈は自分で組めるから、心が荒んだ時に、理屈抜きでただ温かく『大丈夫だよ』と場の空気を和らげてほしい", func: "leading", score: 15 }, // LII/LSI
-      { text: "【現実的推進】頭のシミュレーションだけで動けなくなるから、『とりあえずやってみようぜ！』と強引に現実の行動へ引っ張ってほしい", func: "ignoring", score: 15 }, // ILI/IEI
-      { text: "【完全孤立】他人の介入自体がノイズ（システムエラー）になるから、誰も入ってこない隔離空間に一人にしてほしい", func: "proof", score: 10 } // SLI等
+      { text: "【論理的整理】自分の感情論をバッサリ切り捨てて、状況を客観的で簡潔な『システム（図や法則）』に整理し直してほしい", func: "suggestive", score: 45 }, // 大幅加点！
+      { text: "【感情包容】理屈は自分で組めるから、心が荒んだ時に、理屈抜きでただ温かく見守り、場の空気を和らげてほしい", func: "leading", score: 10 }, 
+      { text: "【現実推進】頭のシミュレーションだけで動けなくなるから、『とりあえずやってみようぜ！』と強引に現実の行動へ引っ張ってほしい", func: "ignoring", score: 20 }, 
+      { text: "【完全孤立】他人の介入自体がノイズになるから、誰も入ってこない隔離空間に一人にしてほしい", func: "proof", score: 10 } 
     ]
   },
   {
@@ -147,10 +147,10 @@ const questions = [
     type: "ti_valued_check",
     text: "【証明Ti vs 主導Ti 判別テスト】<br>「人間社会の複雑な動きを、例外なく完璧に説明できる論理システム（数式）」が発表されました。あなたの反応は？",
     choices: [
-      { text: "素晴らしい。もし例外があれば、システム自体を拡張して組み込み、完璧にしたい。", func: "leading", score: 15 },
-      { text: "論理的な欠陥（矛盾）をいくつも突ける。そもそも、現実の混沌がきれいな論理で表現できるわけがない。", func: "proof", score: 15 },
-      { text: "そのシステムを使って、自分に有利な状況や権力を手に入れる方法を考える。", func: "creative", score: 10 },
-      { text: "すごいとは思うけど、人間の倫理や道徳（善悪）のほうがもっと大事だと思う。", func: "normative", score: 5 }
+      { text: "素晴らしい。もし例外があれば、システム自体を拡張して組み込み、完璧にしたい。", func: "leading", score: 40 }, // LII決定打
+      { text: "論理的な欠陥（矛盾）をいくつも突ける。そもそも、現実の混沌がきれいな論理で表現できるわけがない。", func: "proof", score: 40 }, // ILI決定打
+      { text: "そのシステムを使って、自分に有利な状況や権力を手に入れる方法を考える。", func: "creative", score: 30 },
+      { text: "すごいとは思うけど、人間の倫理や道徳（善悪）のほうがもっと大事だと思う。", func: "normative", score: 10 }
     ]
   },
   {
@@ -161,7 +161,7 @@ const questions = [
   {
     id: 20,
     type: "creative_ti_gimmick",
-    text: "【説明プロトコルの構築（創造Tiテスト）】<br>あなたが新しく編み出した『超効率的な仕事（勉強）のやり方』を、友人に教えることになりました。説明に必ず組み込みたい【2つの要素】をスロットに入れてください。",
+    text: "【説明プロトコルの構築（創造Tiテスト）】<br>あなたが新しく編み出した『超効率的な勉強法』を友人に教えることになりました。説明に組み込みたい【2つの要素】をスロットに入れてください。",
     blocks: [
       { id: "A", text: "【厳密な定義】「そもそもこの効率化の前提条件は…」と原理から話す" },
       { id: "B", text: "【例え話】「要するに〇〇と同じだよ」と身近なものに置き換えて話す" },
@@ -172,12 +172,12 @@ const questions = [
   {
     id: 21,
     type: "mobilizing_ti_gimmick",
-    text: "【哲学と法則（動員Tiテスト）】<br>自分の将来や人生の目的について考えていて、頭がごちゃごちゃになってきました。どうする？",
+    text: "【哲学と法則（動員Tiテスト）】<br>人生の目的について考えていて、頭がごちゃごちゃになってきました。どうする？",
     choices: [
       { text: "自分の考えを紙に書き出し、矛盾がないか徹底的に構造化して整理する", func: "leading", score: 10 },
-      { text: "哲学的な本や名言を読み漁り、自分の人生に当てはまる『美しい法則や概念』を見つけて感銘を受ける", func: "mobilizing", score: 15 },
-      { text: "誰かに話を聞いてもらい、「つまりこういうことじゃない？」と綺麗に概念化・整理してほしい", func: "suggestive", score: 10 },
-      { text: "考えるのをやめて、とりあえず今やりたいことを行動に移す", func: "se_lead", score: 10 }
+      { text: "哲学的な本を読み漁り、人生に当てはまる『美しい法則や概念』を見つけて感銘を受ける", func: "mobilizing", score: 45 }, // 大幅加点！
+      { text: "誰かに話を聞いてもらい、「つまりこういうことじゃない？」と綺麗に整理してほしい", func: "suggestive", score: 20 },
+      { text: "考えるのをやめて、とりあえず今やりたいことを行動に移す", func: "se_lead", score: 20 }
     ]
   }
 ];
