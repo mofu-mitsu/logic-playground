@@ -177,22 +177,28 @@ function renderQuestion() {
   title.innerHTML = q.text;
   container.appendChild(title);
 
-  // 強度計算用の次元重み（性格判定用とは別）
+  // 【みつき定義：強度重み係数】これをすべての計算の基盤にする
   const tiStrengthWeights = {
-    leading: 1.0, proof: 1.0, creative: 0.8, ignoring: 0.8,
-    mobilizing: 0.6, normative: 0.4, suggestive: 0.2, vulnerable: 0.1
+    leading: 1.0,    // 4D: 主導 (最強)
+    proof: 0.9,      // 4D: 証明 (最強レベル)
+    creative: 0.8,   // 3D: 創造 (強い)
+    ignoring: 0.7,   // 3D: 無視 (強いけど使わない)
+    mobilizing: 0.5, // 2D: 動員 (普通)
+    normative: 0.4,  // 2D: 規範 (普通)
+    suggestive: 0.2, // 1D: 暗示 (弱い)
+    vulnerable: 0.1  // 1D: 脆弱 (最弱)
   };
 
   // ==========================================
-  // ギミック分岐：一切の共通化を廃止
+  // ギミック分岐：一切の共通化を廃止し詳細に記述
   // ==========================================
 
   // ------------------------------------------
-  // 1. ダーリン介入ギミック (Q17相当)
+  // 1. ダーリン介入ギミック
   // ------------------------------------------
   if (type === "darling_interception") {
-    const qMaxScore = 40; // この問題の満点を固定
-    tiMaxPossible += qMaxScore;
+    const qMaxScore = 40; // この問題の満点を40に設定
+    tiMaxPossible += qMaxScore; // 分母に加算
 
     container.style.border = "2px solid #f472b6";
     container.style.background = "rgba(190, 24, 93, 0.1)";
@@ -212,11 +218,13 @@ function renderQuestion() {
       btn.onclick = () => {
         saveHistory();
         scores[c.f] += c.s;
-        // 点数加算ロジック
+        
         let addedPoints = 0;
-        if (c.f === "leading" || c.f === "proof") {
+        // 主導(leading)なら分母と同じ満点を与える
+        if (c.f === "leading") {
           addedPoints = qMaxScore;
         } else {
+          // それ以外は (スコア * 重み) で計算
           addedPoints = c.s * (tiStrengthWeights[c.f] || 0.1);
         }
         tiUserPoints += addedPoints;
@@ -228,10 +236,10 @@ function renderQuestion() {
   }
 
   // ------------------------------------------
-  // 2. 通常のテキスト選択肢系
+  // 2. 通常のテキスト選択肢系 (いちご、動員など)
   // ------------------------------------------
   else if (["choice", "time_trap", "strawberry_logic", "emotion_logic", "unresolved_logic", "diogenes_trap", "suggestive_ti", "ti_valued_check", "mobilizing_ti_gimmick"].includes(type)) {
-    // この問題の最大獲得可能点数を算出
+    // この問題の満点を算出 (Leadingが選ぶはずの最高点)
     const qMaxScore = Math.max(...q.choices.map(c => c.score || 0), 10);
     tiMaxPossible += qMaxScore;
 
@@ -242,20 +250,22 @@ function renderQuestion() {
       btn.onclick = () => {
         saveHistory();
         const elapsed = Date.now() - questionStartTime;
-        // 適当プレイ判定
+        
+        // 適当プレイ判定：1.2秒未満ならペナルティ
         if (elapsed < 1200) {
           scores.vulnerable += 25; 
-          scores.leading -= 10;
+          scores.leading -= 15;
         }
 
         let basePoints = c.score || 0;
         scores[c.func] += basePoints;
 
-        // 強度（分子）の計算
         let addedPoints = 0;
-        if (c.func === "leading" || c.func === "proof") {
-          addedPoints = qMaxScore; // 主導・証明なら問答無用で満点
+        // 主導(leading)なら問答無用でその問題の満点を与える
+        if (c.func === "leading") {
+          addedPoints = qMaxScore;
         } else {
+          // それ以外は次元重みを掛ける
           addedPoints = basePoints * (tiStrengthWeights[c.func] || 0.1);
         }
         tiUserPoints += addedPoints;
@@ -283,9 +293,13 @@ function renderQuestion() {
       const v = parseFloat(sli.value);
       let p = (v === 50.0) ? qMaxScore : (Math.abs(v - 50) <= 1.0 ? 20 : 0);
       
-      if (v === 50.0) { scores.leading += 30; } 
-      else if (p > 0) { scores.normative += 20; } 
-      else { scores.vulnerable += 30; }
+      if (v === 50.0) { 
+        scores.leading += 30; 
+      } else if (p > 0) { 
+        scores.normative += 20; 
+      } else { 
+        scores.vulnerable += 30; 
+      }
 
       tiUserPoints += p;
       logAction(`Slider:${v}`, p, qMaxScore);
@@ -314,7 +328,11 @@ function renderQuestion() {
     btn.onclick = () => {
       saveHistory();
       let p = isFixed ? qMaxScore : 0;
-      if (isFixed) { scores.leading += 25; } else { scores.vulnerable += 30; }
+      if (isFixed) { 
+        scores.leading += 25; 
+      } else { 
+        scores.vulnerable += 30; 
+      }
       tiUserPoints += p;
       logAction(isFixed?"ズレ修正":"放置", p, qMaxScore);
       next();
@@ -352,12 +370,17 @@ function renderQuestion() {
         yC.push(t); xC.push(l);
         if ((l < 50 || l > area.offsetWidth - 80) && (t < 50 || t > area.offsetHeight - 80)) corners++;
       });
+      // 20px以内の誤差なら整列とみなす
       const isAligned = (Math.max(...yC) - Math.min(...yC) < 20 || Math.max(...xC) - Math.min(...xC) < 20);
       
       let p = 0; let msg = "";
-      if (isAligned) { p = qMaxScore; msg = "綺麗に整列(Ti)"; scores.leading += 25; }
-      else if (corners >= 3) { p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 25; }
-      else { p = 10; msg = "適当な配置"; scores.vulnerable += 20; }
+      if (isAligned) { 
+        p = qMaxScore; msg = "綺麗に整列(Ti)"; scores.leading += 25; 
+      } else if (corners >= 3) { 
+        p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 25; 
+      } else { 
+        p = 10; msg = "適当な配置"; scores.vulnerable += 25; 
+      }
 
       tiUserPoints += p;
       logAction(msg, p, qMaxScore);
@@ -425,7 +448,7 @@ function renderQuestion() {
       saveHistory();
       let v = parseFloat(handle.dataset.val || 5);
       let p = (isClicked && v > 89) ? qMaxScore : 10;
-      if (v > 89) scores.leading += 30; else scores.normative += 20;
+      if (v > 89) { scores.leading += 30; scores.proof += 15; } else { scores.normative += 25; }
       tiUserPoints += p;
       logAction(`B-Line:${v.toFixed(1)}%`, p, qMaxScore);
       next();
@@ -461,7 +484,7 @@ function renderQuestion() {
       saveHistory();
       const first = Array.from(pList.children).find(el => el.dataset.order === "1");
       let p = (first && first.innerText.includes("フィルム")) ? qMaxScore : 0;
-      if (p === qMaxScore) scores.leading += 30; else scores.vulnerable += 30;
+      if (p === qMaxScore) { scores.leading += 30; scores.proof += 20; } else { scores.vulnerable += 40; }
       tiUserPoints += p;
       logAction("Manual", p, qMaxScore);
       next();
@@ -518,7 +541,7 @@ function renderQuestion() {
       } else if (inFolder.includes("耳のキノコ") || inFolder.includes("脇のもやし")) {
         scores.creative += 30; p = qMaxScore; msg = "創造分類(創造Ti)";
       } else {
-        scores.vulnerable += 25; p = 10; msg = "不完全分類";
+        scores.vulnerable += 30; p = 10; msg = "不完全分類";
       }
       tiUserPoints += p;
       logAction(msg, p, qMaxScore);
@@ -550,7 +573,7 @@ function renderQuestion() {
       const ids = Array.from(slot.querySelectorAll(".draggable-item")).map(el => el.dataset.id);
       let p = 0;
       if (ids.includes("B") || ids.includes("C") || ids.includes("D")) {
-        scores.creative += 30; p = qMaxScore; logAction("創造的説明", p, qMaxScore);
+        scores.creative += 35; p = qMaxScore; logAction("創造的説明", p, qMaxScore);
       } else {
         scores.leading += 25; p = 20; logAction("主導的説明", p, qMaxScore);
       }
@@ -571,7 +594,7 @@ function renderQuestion() {
       rb.onclick = () => {
         saveHistory();
         let p = (r.id === "C") ? qMaxScore : 0;
-        if(p === qMaxScore) scores.proof += 30; else scores.vulnerable += 30;
+        if(p === qMaxScore) scores.proof += 35; else scores.vulnerable += 40;
         tiUserPoints += p;
         logAction(`Paradox:${r.id}`, p, qMaxScore);
         next();
@@ -598,7 +621,7 @@ function renderQuestion() {
       saveHistory();
       const isOk = document.getElementById("b-D").querySelector(".draggable-item");
       let p = isOk ? qMaxScore : 0;
-      if(isOk) scores.proof += 35; else scores.vulnerable += 30;
+      if(isOk) { scores.proof += 40; scores.leading += 10; } else { scores.vulnerable += 40; }
       tiUserPoints += p;
       logAction(isOk?"Rule:OK":"Rule:NG", p, qMaxScore);
       next();
@@ -606,7 +629,7 @@ function renderQuestion() {
     container.appendChild(b);
   }
 
-  // --- 共通フッター：戻る ＆ わからない ---
+  // --- 共通フッター ---
   const footer = document.createElement("div");
   footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.gap = "10px";
 
@@ -621,7 +644,7 @@ function renderQuestion() {
   skipBtn.innerHTML = "判定不能 / スキップ";
   skipBtn.onclick = () => {
     saveHistory();
-    scores.vulnerable += 40; // スキップは脆弱Tiに強力加点
+    scores.vulnerable += 50; // スキップは脆弱Tiに強力加点
     logAction("Skip", 0, 0); 
     next(); 
   };
