@@ -168,38 +168,82 @@ function renderQuestion() {
   const title = document.createElement("h3"); title.innerHTML = q.text; container.appendChild(title);
 
   // 1. 介入
+// --- 2箇所目：ダーリンちゃん介入 ---
   if (type === "darling_interception") {
-    const max = 30; tiMaxPossible += max;
+    const max = 30; 
+    tiMaxPossible += max * 1.0; // 分母加算
+
     container.style.border = "2px solid #f472b6"; container.style.background = "rgba(190, 24, 93, 0.1)";
-    const msg = document.createElement("p"); msg.innerHTML = "<b style='color:#f472b6;'>ダーリンちゃん(ILI):</b><br>「ねえダーリン、こんな診断で君がわかると思ってるの？♡」"; container.appendChild(msg);
-    [{ t: "定義さえ厳密なら全ては法則に収束する", f: "leading", s: 30 }, { t: "無理に決まってる。アラを探すのが楽しいだけ", f: "proof", s: 20 }, { t: "知らん。早く終わらせろ", f: "vulnerable", s: 0 }].forEach(c => {
-      const btn = document.createElement("button"); btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
+    const msg = document.createElement("p"); 
+    msg.innerHTML = "<b style='color:#f472b6;'>ダーリンちゃん(ILI):</b><br>「ねえダーリン、こんな診断で君がわかると思ってるの？♡」"; 
+    container.appendChild(msg);
+
+    const dChoices = [
+      { t: "定義さえ厳密なら全ては法則に収束する", f: "leading", s: 30 },
+      { t: "無理に決まってる。アラを探すのが楽しいだけ", f: "proof", s: 20 },
+      { t: "知らん。早く終わらせろ", f: "vulnerable", s: 30 } // 脆弱判定用に点数UP
+    ];
+
+    dChoices.forEach(c => {
+      const btn = document.createElement("button");
+      btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
+
       btn.onclick = () => { 
-        saveHistory(); 
-        if(c.f === "vulnerable") scores.vulnerable += 20; 
-        else scores[c.f] += c.s; 
-        tiUserPoints += c.s; 
-        logAction(c.t.substring(0,6), c.s, max); next(); 
-      }; container.appendChild(btn);
+        saveHistory();
+        
+        // --- ★ここでも同じ重み付けロジック★ ---
+        const tiStrengthWeights = {
+          leading: 1.0, proof: 0.9, creative: 0.8, ignoring: 0.7,
+          mobilizing: 0.5, normative: 0.4, suggestive: 0.2, vulnerable: 0.1
+        };
+
+        // 性格スコア加算
+        scores[c.f] += c.s; 
+
+        // 強度スコア加算（重み付け）
+        const weight = tiStrengthWeights[c.f] || 0;
+        const weightedScore = c.s * weight;
+        tiUserPoints += weightedScore;
+        // --- ★ここまで★ ---
+
+        logAction(c.t.substring(0,6), weightedScore, max); next(); 
+      };
+      container.appendChild(btn);
     });
   }
   // 2. 選択肢
   else if (["choice", "time_trap", "strawberry_logic", "emotion_logic", "unresolved_logic", "diogenes_trap", "suggestive_ti", "ti_valued_check", "mobilizing_ti_gimmick"].includes(type)) {
-    const max = Math.max(...q.choices.map(c => c.score || 0)); tiMaxPossible += max;
+    const max = Math.max(...q.choices.map(c => c.score || 0)); 
+    
+    // 【重要】この問題で取れる最大強度を分母に足す（leadingの重み1.0で計算）
+    tiMaxPossible += max * 1.0; 
+
     const shuffledChoices = [...q.choices].sort(() => Math.random() - 0.5);
     shuffledChoices.forEach(c => {
-      const btn = document.createElement("button"); btn.className = "choice-btn"; btn.innerText = c.text;
+      const btn = document.createElement("button");
+      btn.className = "choice-btn"; btn.innerText = c.text;
+
       btn.onclick = () => {
-        saveHistory(); let p = c.score || 0;
-        const elapsed = Date.now() - questionStartTime;
-        if (elapsed < 1200) { 
-        scores.vulnerable += 25; // 1.2秒未満は「考えを放棄した」とみなす
-        scores.leading -= 10;    // 主導Tiスコアを直接削る
-        }
+        saveHistory();
+        let p = c.score || 0;
+
+        // --- ★ここから重み付けロジック★ ---
+        const tiStrengthWeights = {
+          leading: 1.0, proof: 0.9, creative: 0.8, ignoring: 0.7,
+          mobilizing: 0.5, normative: 0.4, suggestive: 0.2, vulnerable: 0.1
+        };
+
+        // 1. 性格スコア（配置判定）にはそのまま加算
         if(scores[c.func] !== undefined) scores[c.func] += p;
-        const tiFuncs = ["leading", "creative", "normative", "proof", "mobilizing", "ignoring", "suggestive"];
-        if (tiFuncs.includes(c.func)) tiUserPoints += p;
-        logAction(c.text.substring(0,10), p, max); next(); 
+
+        // 2. Ti強度（％）には重みをかけて加算
+        const weight = tiStrengthWeights[c.func] || 0;
+        const weightedScore = p * weight;
+        tiUserPoints += weightedScore;
+        // --- ★ここまで★ ---
+
+        logAction(c.text.substring(0,10), weightedScore, max); 
+        next(); 
       };
       container.appendChild(btn);
     });
