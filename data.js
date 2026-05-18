@@ -91,7 +91,7 @@ const questions = [
       { text: "『野菜』という言葉の指示対象と時間の概念が混同されていると分析する", func: "leading", score: 10 },
       { text: "じゃあ何？と聞き返し、納得できるまで新しい定義を求める", func: "proof", score: 9 },
       { text: "…要するに、ただの『草』ってことでしょ？（投げ捨てる）", func: "creative", score: 1 }, 
-      { text: "意味がわからない。何が言いたいのか理解を拒む", func: "vulnerable", score: 2 } 
+      { text: "(  ˙꒳​˙ )ﾁｮｯﾄﾅﾆｲｯﾃﾙｶﾜｶﾗﾅｲ。何が言いたいのか理解を拒む", func: "vulnerable", score: 2 } 
     ]
   },
   {
