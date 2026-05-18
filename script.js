@@ -491,9 +491,9 @@ function showResult() {
     normative: "規範Ti (ESI/EII)", 
     vulnerable: "脆弱Ti (SEE/IEE)", 
     suggestive: "暗示Ti (ESE/EIE)", 
-    proof: "証明Ti (LIE/LSE)", 
+    proof: "証明Ti (ILI/SLI)", 
     mobilizing: "動員Ti (SEI/IEI)", 
-    ignoring: "無視Ti (ILI/SLI)", 
+    ignoring: "無視Ti (LIE/LSE)", 
     fe_lead: "感情主導(Fe-Leading)", 
     se_lead: "感覚主導(Se-Leading)" 
   };
