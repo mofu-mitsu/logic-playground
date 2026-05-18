@@ -197,9 +197,7 @@ function renderQuestion() {
   // 1. ダーリン介入ギミック
   // ------------------------------------------
   if (type === "darling_interception") {
-    const qMaxScore = 40; // この問題の満点を40に設定
-    tiMaxPossible += qMaxScore; // 分母に加算
-
+    const qMaxScore = 40; 
     container.style.border = "2px solid #f472b6";
     container.style.background = "rgba(190, 24, 93, 0.1)";
     const msg = document.createElement("p");
@@ -217,56 +215,48 @@ function renderQuestion() {
       btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
       btn.onclick = () => {
         saveHistory();
+        tiMaxPossible += qMaxScore; // 分母確定
         scores[c.f] += c.s;
         
-        let addedPoints = 0;
-        // 主導(leading)なら分母と同じ満点を与える
-        if (c.f === "leading") {
-          addedPoints = qMaxScore;
-        } else {
-          // それ以外は (スコア * 重み) で計算
-          addedPoints = c.s * (tiStrengthWeights[c.f] || 0.1);
-        }
-        tiUserPoints += addedPoints;
-        logAction(c.t.substring(0,6), Math.round(addedPoints), qMaxScore);
+        let p = (c.f === "leading" || c.f === "proof") ? qMaxScore : (c.s * tiStrengthWeights[c.f]);
+        tiUserPoints += p;
+        logAction(c.t.substring(0,6), Math.round(p), qMaxScore);
         next();
       };
       container.appendChild(btn);
     });
+    return;
   }
 
   // ------------------------------------------
   // 2. 通常のテキスト選択肢系 (いちご、動員など)
   // ------------------------------------------
+// --- 2. 通常の選択肢系 ---
   else if (["choice", "time_trap", "strawberry_logic", "emotion_logic", "unresolved_logic", "diogenes_trap", "suggestive_ti", "ti_valued_check", "mobilizing_ti_gimmick"].includes(type)) {
-    // この問題の満点を算出 (Leadingが選ぶはずの最高点)
-    const qMaxScore = Math.max(...q.choices.map(c => c.score || 0), 10);
-    tiMaxPossible += qMaxScore;
-
+    
+    // 【較正】主導(leading)の選択肢が持っている点数を、この問題の「真の満点」とする
+    const leadingOption = q.choices.find(c => c.func === "leading");
+    const qMaxScore = leadingOption ? leadingOption.score : 40; 
+    
     const shuffled = [...q.choices].sort(() => Math.random() - 0.5);
     shuffled.forEach(c => {
       const btn = document.createElement("button");
       btn.className = "choice-btn"; btn.innerText = c.text;
       btn.onclick = () => {
         saveHistory();
-        const elapsed = Date.now() - questionStartTime;
+        tiMaxPossible += qMaxScore; // 分母には「主導Tiの点数」を足す
         
-        // 適当プレイ判定：1.2秒未満ならペナルティ
-        if (elapsed < 1200) {
-          scores.vulnerable += 25; 
-          scores.leading -= 15;
-        }
+        const elapsed = Date.now() - questionStartTime;
+        if (elapsed < 1200) { scores.vulnerable += 25; scores.leading -= 15; }
 
-        let basePoints = c.score || 0;
-        scores[c.func] += basePoints;
-
+        scores[c.func] += c.score;
+        
+        // 主導・証明なら問答無用でその問題の満点を与える（端数切り捨て防止）
         let addedPoints = 0;
-        // 主導(leading)なら問答無用でその問題の満点を与える
-        if (c.func === "leading") {
+        if (c.func === "leading" || c.func === "proof") {
           addedPoints = qMaxScore;
         } else {
-          // それ以外は次元重みを掛ける
-          addedPoints = basePoints * (tiStrengthWeights[c.func] || 0.1);
+          addedPoints = c.score * (tiStrengthWeights[c.func] || 0.1);
         }
         tiUserPoints += addedPoints;
 
@@ -642,10 +632,11 @@ function renderQuestion() {
   const skipBtn = document.createElement("button");
   skipBtn.className = "choice-btn"; skipBtn.style.flex = "2"; skipBtn.style.background = "rgba(100,116,139,0.2)";
   skipBtn.innerHTML = "判定不能 / スキップ";
-  skipBtn.onclick = () => {
+    skipBtn.onclick = () => {
     saveHistory();
-    scores.vulnerable += 50; // スキップは脆弱Tiに強力加点
-    logAction("Skip", 0, 0); 
+    tiMaxPossible += 10; // スキップした分も少しだけ分母に足す
+    scores.vulnerable += 15; // 40から15へマイルドに
+    logAction("Skip", 0, 10); 
     next(); 
   };
 
