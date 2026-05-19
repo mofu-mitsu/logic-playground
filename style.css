@@ -321,3 +321,14 @@ h1 { font-size: 1.5rem; color: #38bdf8; text-shadow: 0 0 10px rgba(56, 189, 248,
   .align-box { width: 40px; height: 40px; }
   .slider-value { font-size: 1.2rem; }
 }
+/* 連打してもズームさせない、かつタップの反応を速くする */
+button, .choice-btn, .bug-icon, .draggable-item {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; /* タップした時の青い枠を消す */
+}
+
+/* 🐛の当たり判定を少し大きくする */
+#bug-container {
+  padding: 20px;
+  cursor: pointer;
+}
