@@ -704,17 +704,16 @@ function showResult() {
     high = "leading";
   } else if (str >= 80) {
     // 【強者帯 (80%〜89%)】主導Ti か 証明Ti
-    // ★較正：ミニゲームによるleading偏りを相殺するため、proofが僅差（60点差以内）なら証明Tiを優先出力
-    high = (scores.proof >= scores.leading - 60) ? "proof" : "leading";
+    // ★較正： proofが僅差（60点差以内）なら証明Tiを優先出力
+    high = (finalScores.proof >= finalScores.leading - 60) ? "proof" : "leading";
   } else if (str >= 70) {
-    // 【中堅上位帯 (70%〜79%)】
-    // ★ここでもproofへの偏り補正を適用
-    let adjustedProof = scores.proof + 40; 
+    // 【中堅上位帯 (70%〜79%)】証明、創造、規範、無視のいずれか
+    // ★みつきの指摘通り、不自然な加点(adjustedProof)を完全廃止し、純粋なスコアで競わせる！
     const c = { 
-      proof: adjustedProof, 
-      creative: scores.creative, 
-      normative: scores.normative, 
-      ignoring: scores.ignoring 
+      proof: finalScores.proof, 
+      creative: finalScores.creative, 
+      normative: finalScores.normative, 
+      ignoring: finalScores.ignoring 
     };
     high = Object.keys(c).reduce((a, b) => c[a] > c[b] ? a : b);
   } else {
