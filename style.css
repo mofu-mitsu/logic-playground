@@ -332,3 +332,12 @@ button, .choice-btn, .bug-icon, .draggable-item {
   padding: 20px;
   cursor: pointer;
 }
+/* --- 邪魔な当たり判定（透明な壁）を無効化 --- */
+#bug-container, #darling-container {
+  pointer-events: none !important; /* コンテナ自体はクリックをすり抜ける */
+}
+
+/* 実際にクリックしていいアイコンや吹き出しだけを有効にする */
+.bug-icon, .darling-icon, .bubble, .bubble-pink {
+  pointer-events: auto !important; 
+}
