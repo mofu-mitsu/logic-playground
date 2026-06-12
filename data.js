@@ -29,10 +29,10 @@ const questions = [
     type: "time_trap",
     text: "【思考テスト】<br>『空飛ぶペンギンは魚である』という新法が制定されました。<br>さて、動物園のペンギンはどうなる？",
     choices: [
-      { text: "前提条件（動物園のペンギンが飛ぶか否か）が定義されていないため、判定不能（解なし）", func: "leading", score: 45 }, // ガチTi勢が求めていた答え！
-      { text: "法律の『空飛ぶ』の定義による", func: "proof", score: 30 },
-      { text: "動物園のペンギンは飛ばないので鳥のまま", func: "normative", score: 15 },
-      { text: "知らん。魚じゃないだろ。", func: "vulnerable", score: 5 }
+      { text: "前提条件（動物園のペンギンが飛ぶか否か）が定義されていないため解なし", func: "leading", score: 10 },
+      { text: "生物学と法学のどちらの『文脈』を優先するかで結果が変わる", func: "proof", score: 9 }, // ★証明Ti向けに変更！
+      { text: "新しい法律だ！面白い！", func: "mobilizing", score: 6 },
+      { text: "知らん。魚じゃないだろ。", func: "vulnerable", score: 1 }
     ]
   },
   {
