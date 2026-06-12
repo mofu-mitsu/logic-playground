@@ -74,8 +74,6 @@ input[type="range"] { width: 100%; margin: 20px 0; cursor: pointer; }
 .slider-value { font-size: 1.5rem; font-weight: bold; color: #38bdf8; }
 
 .box-container { display: flex; justify-content: center; gap: 15px; margin: 30px 0; }
-.align-box { width: 50px; height: 50px; background: #38bdf8; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: all 0.2s;}
-.misaligned { transform: translateY(10px) rotate(5deg); background: #7dd3fc; }
 
 .gradient-bar { width: 100%; height: 80px; background: linear-gradient(to right, white, black); cursor: crosshair; border: 2px solid #38bdf8; margin: 20px 0; position: relative; }
 .boundary-line { position: absolute; top: 0; width: 2px; height: 100%; background: red; display: none; }
@@ -193,7 +191,6 @@ h1 { font-size: 1.5rem; color: #38bdf8; text-shadow: 0 0 10px rgba(56, 189, 248,
 .bubble { background: white; color: black; padding: 8px; border-radius: 8px; font-size: 0.8rem; margin-bottom: 5px; font-weight: bold;}
 .bubble-pink { background: #fdf2f8; color: #be185d; border: 1px solid #f472b6; padding: 10px; border-radius: 10px; font-size: 0.8rem; }
 
-.align-box { width: 50px; height: 50px; background: #38bdf8; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: 0.2s;}
 .misaligned { transform: translateY(10px) rotate(8deg); }
 
 .folder-wrap { display: flex; gap: 10px; margin: 20px 0; justify-content: space-around; }
@@ -340,4 +337,60 @@ button, .choice-btn, .bug-icon, .draggable-item {
 /* 実際にクリックしていいアイコンや吹き出しだけを有効にする */
 .bug-icon, .darling-icon, .bubble, .bubble-pink {
   pointer-events: auto !important; 
+}
+
+/* ドラッグ中の重さ（ラグ）を解消する */
+.dragging-clone {
+  transition: none !important; /* アニメーションを強制オフ */
+  pointer-events: none;
+  z-index: 10000;
+  opacity: 0.9;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+}
+/* フィードバック用テキストエリア */
+.feedback-input {
+  width: 100%; height: 80px; background: rgba(0,0,0,0.3); color: #fff;
+  border: 1px solid #38bdf8; padding: 10px; border-radius: 5px;
+  font-family: inherit; margin-top: 10px; resize: none;
+}
+/* 四角い箱の設定 */
+.align-box { 
+  width: 50px; 
+  height: 50px; 
+  background: #38bdf8; 
+  border-radius: 8px; 
+  cursor: pointer; 
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  
+  /* ↓ アニメーションを消すか、色が変わる時だけにする！ */
+  transition: background-color 0.2s, box-shadow 0.2s; 
+  
+  /* ↓ これが超重要！スマホのスクロールと干渉させない */
+  touch-action: none; 
+}
+
+/* --- トースト通知 --- */
+#toast {
+  visibility: hidden;
+  min-width: 250px;
+  background-color: rgba(56, 189, 248, 0.9);
+  color: #0f172a;
+  text-align: center;
+  border-radius: 8px;
+  padding: 16px;
+  position: fixed;
+  z-index: 99999;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 30px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  box-shadow: 0px 4px 15px rgba(0,0,0,0.5);
+  transition: opacity 0.5s, bottom 0.5s;
+  opacity: 0;
+}
+#toast.show {
+  visibility: visible;
+  opacity: 1;
+  bottom: 50px;
 }
