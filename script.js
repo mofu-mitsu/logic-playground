@@ -64,55 +64,83 @@ document.getElementById("start-btn").onclick = () => {
 
 /* --- 究極のドラッグ関数（ワープ防止＆タッチバグ防止） --- */
 function setupDraggable(element, onDropCallback) {
-  let clone = null;
   let offsetX = 0, offsetY = 0;
+  let placeholder = null;
+  let originalParent = null;
+  let originalNextSibling = null;
 
-  const onMove = (e) => {
-    if (!clone) return;
-    if (e.cancelable && e.type === "touchmove") e.preventDefault(); // ドラッグ中のみスクロール防止
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    clone.style.left = (clientX - offsetX) + "px";
-    clone.style.top = (clientY - offsetY) + "px";
-  };
-
-  const onEnd = (e) => {
-    if (!clone) return;
-    element.style.opacity = "1";
-    clone.style.display = 'none'; 
-    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-    const dropTarget = document.elementFromPoint(clientX, clientY);
-    clone.remove(); clone = null;
-    
-    // ドラッグが終わったらイベントを消す
-    clearDocListeners();
-    if (onDropCallback) onDropCallback(clientX, clientY, element, dropTarget);
-  };
-
-  const onStart = (e) => {
-    if (clone) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const rect = element.getBoundingClientRect();
-    offsetX = clientX - rect.left; offsetY = clientY - rect.top;
-
-    clone = element.cloneNode(true);
-    clone.classList.add("dragging-clone");
-    clone.style.position = 'fixed'; clone.style.zIndex = "9999";
-    clone.style.width = rect.width + "px"; clone.style.height = rect.height + "px";
-    clone.style.left = rect.left + "px"; clone.style.top = rect.top + "px";
-    clone.style.pointerEvents = "none"; clone.style.opacity = "0.9"; clone.style.boxShadow = "0 0 15px #38bdf8";
-    document.body.appendChild(clone);
-    element.style.opacity = "0.1";
+  function onStart(e) {
     if (e.type === "mousedown") e.preventDefault();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const rect = element.getBoundingClientRect();
+    
+    // 指で掴んだ位置のズレ（オフセット）を記録
+    offsetX = cx - rect.left;
+    offsetY = cy - rect.top;
 
-    // ドラッグ中のみ監視を開始
+    originalParent = element.parentNode;
+    originalNextSibling = element.nextSibling;
+
+    // 元の場所が詰まらないように透明な「身代わり」を置く
+    placeholder = document.createElement("div");
+    placeholder.style.width = rect.width + "px";
+    placeholder.style.height = rect.height + "px";
+    placeholder.style.margin = getComputedStyle(element).margin;
+    originalParent.insertBefore(placeholder, element);
+
+    // ★ガラスUIのバグを回避するため、body直下に出して動かす★
+    document.body.appendChild(element);
+    element.style.position = "fixed";
+    element.style.zIndex = "9999";
+    element.style.left = rect.left + "px";
+    element.style.top = rect.top + "px";
+    element.style.margin = "0";
+
     addDocListener('mousemove', onMove, { passive: false });
     addDocListener('touchmove', onMove, { passive: false });
     addDocListener('mouseup', onEnd, false);
     addDocListener('touchend', onEnd, false);
-  };
+  }
+
+  function onMove(e) {
+    if (e.cancelable && e.type === "touchmove") e.preventDefault();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    element.style.left = (cx - offsetX) + "px";
+    element.style.top = (cy - offsetY) + "px";
+  }
+
+  function onEnd(e) {
+    clearDocListeners();
+    const cx = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const cy = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+    
+    // 一時的に自身を隠して下のフォルダを判定
+    element.style.display = "none";
+    const dropTarget = document.elementFromPoint(cx, cy);
+    element.style.display = "block";
+
+    // スタイルを元に戻す
+    element.style.position = "static";
+    element.style.zIndex = "";
+    element.style.left = "";
+    element.style.top = "";
+    element.style.margin = "";
+
+    // いったん「身代わり」の場所に戻す（この直後に分類フォルダ等に移動される）
+    if (placeholder && placeholder.parentNode) {
+      placeholder.parentNode.insertBefore(element, placeholder);
+      placeholder.parentNode.removeChild(placeholder);
+    } else if (originalParent) {
+      originalParent.insertBefore(element, originalNextSibling);
+    }
+
+    if (onDropCallback) {
+      // 空間配置のズレを防ぐため、offX と offY も渡す！
+      onDropCallback(cx, cy, element, dropTarget, offsetX, offsetY);
+    }
+  }
 
   element.addEventListener('mousedown', onStart);
   element.addEventListener('touchstart', onStart, { passive: false });
@@ -135,10 +163,22 @@ function next() { currentQ++; renderQuestion(); }
 
 let bugClicks = 0; const bug = document.getElementById("bug"); const bugBubble = document.getElementById("bug-bubble"); const bugCont = document.getElementById("bug-container");
 setInterval(() => { if (!bug || bug.classList.contains("splashed")) return; bugCont.style.left = Math.floor(Math.random() * (window.innerWidth - 120)) + "px"; }, 5000);
+// --- 🐛芋虫クリック処理（創造Tiアップ！） ---
 bug.onclick = () => {
-  if (bugClicks >= 30) return; bugClicks++; bugBubble.classList.remove("hidden");
-  if (bugClicks === 30) { seFlag = true; bug.innerHTML = "💥"; bug.classList.add("splashed"); bugBubble.innerText = "ギャァァァアア！！"; setTimeout(() => { if(bugCont) bugCont.style.display = "none"; }, 2500); }
-  else { bugBubble.innerText = `[${bugClicks}/30] ${bugQuotes[bugClicks % bugQuotes.length]}`; }
+  if (bugClicks >= 30) return;
+  bugClicks++;
+  bugBubble.classList.remove("hidden");
+  if (bugClicks === 30) {
+    seFlag = true; 
+    scores.creative += 50;   // 遊びでシステムを破壊する＝創造Ti（SLE/ILE）爆上げ！
+    scores.vulnerable += 20; // 脆弱Tiにも少し
+    bug.innerHTML = "💥"; bug.classList.add("splashed"); 
+    bugBubble.innerText = "ギャァァァアア！！"; 
+    logAction("芋虫破壊(創造Ti/Se)", 0, 0);
+    setTimeout(() => { if(bugCont) bugCont.style.display = "none"; }, 2500);
+  } else {
+    bugBubble.innerText = `[${bugClicks}/30] ${bugQuotes[bugClicks % bugQuotes.length]}`;
+  }
 };
 
 setInterval(() => {
@@ -336,16 +376,22 @@ function renderQuestion() {
   else if (type === "align_free") {
     const qMaxScore = 30;
     tiMaxPossible += qMaxScore;
-    const area = document.createElement("div"); area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px";
+    const area = document.createElement("div"); 
+    area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px";
     const boxes = [];
     for (let i = 0; i < 4; i++) {
       const b = document.createElement("div"); b.className = "align-box"; b.style.position="absolute";
       b.style.top = (i * 45) + "px"; b.style.left = (i * 45) + "px";
-      setupDraggable(b, (x, y, el) => {
-        const r = area.getBoundingClientRect();
+      
+      // ★ offX, offY を受け取ってズレを打ち消す！
+      setupDraggable(b, (x, y, el, target, offX, offY) => {
+        const r = area.getBoundingClientRect(); 
         el.style.position = 'absolute';
-        el.style.left = Math.min(Math.max(x - r.left - 25, 0), r.width - 50) + "px";
-        el.style.top = Math.min(Math.max(y - r.top - 25, 0), r.height - 50) + "px";
+        // 指で掴んだズレ(offX)を引くことで、置いた場所にピタッと止まる！
+        let newLeft = x - r.left - offX;
+        let newTop = y - r.top - offY;
+        el.style.left = Math.min(Math.max(newLeft, 0), r.width - 50) + "px";
+        el.style.top = Math.min(Math.max(newTop, 0), r.height - 50) + "px";
         el.dataset.moved = "true";
         area.appendChild(el);
       });
@@ -360,17 +406,12 @@ function renderQuestion() {
         yC.push(t); xC.push(l);
         if ((l < 50 || l > area.offsetWidth - 80) && (t < 50 || t > area.offsetHeight - 80)) corners++;
       });
-      // 20px以内の誤差なら整列とみなす
       const isAligned = (Math.max(...yC) - Math.min(...yC) < 20 || Math.max(...xC) - Math.min(...xC) < 20);
       
       let p = 0; let msg = "";
-      if (isAligned) { 
-        p = qMaxScore; msg = "綺麗に整列(Ti)"; scores.leading += 25; 
-      } else if (corners >= 3) { 
-        p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 25; 
-      } else { 
-        p = 10; msg = "適当な配置"; scores.vulnerable += 25; 
-      }
+      if (isAligned) { p = qMaxScore; msg = "綺麗に整列(Ti)"; scores.leading += 25; }
+      else if (corners >= 3) { p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 25; }
+      else { p = 10; msg = "適当な配置"; scores.vulnerable += 20; }
 
       tiUserPoints += p;
       logAction(msg, p, qMaxScore);
@@ -378,7 +419,6 @@ function renderQuestion() {
     };
     container.appendChild(area); container.appendChild(btn);
   }
-
   // ------------------------------------------
   // 6. 二重分類 (Q6)
   // ------------------------------------------
@@ -486,21 +526,22 @@ function renderQuestion() {
   // 9. 文章修正デバッグ (Q19)
   // ------------------------------------------
   else if (type === "text_debug") {
-    const qMaxScore = 30;
-    tiMaxPossible += qMaxScore;
+    const qMaxScore = 30; tiMaxPossible += qMaxScore;
+    const desc = document.createElement("p"); desc.style.fontSize="0.85rem"; desc.style.textAlign="left";
+    desc.innerHTML = "<b>※指示：</b> 以下は三段論法です。論理の形式として破綻している部分があります。正しい結論になるように修正した言葉を入力してください。"; container.appendChild(desc);
+    
     const qText = document.createElement("p"); qText.style.background="rgba(255,255,255,0.05)"; qText.style.padding="10px"; qText.style.textAlign="left";
-    qText.innerText = "「論理的な整合せいが保たれていないシステムは、いずれ崩壊する。例外を放置することは、定義の曖昧さを許容することだ。」"; container.appendChild(qText);
-    const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい漢字を入力してください";
+    qText.innerHTML = "「すべての鳥は空を飛ぶ。<br>ペンギンは鳥である。<br>ゆえに、ペンギンは<span style='color:#ef4444; font-weight:bold;'>飛ばない</span>。」"; container.appendChild(qText);
+    
+    const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい言葉を入力";
     container.appendChild(input);
     const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="修正を適用";
     fixBtn.onclick = () => {
-      saveHistory();
+      saveHistory(); 
       let val = input.value.trim();
-      let p = (val === "整合性" || val === "性") ? qMaxScore : 0;
-      if (p === qMaxScore) scores.leading += 30; else scores.vulnerable += 30;
-      tiUserPoints += p;
-      logAction(`Debug:${val}`, p, qMaxScore);
-      next();
+      let p = (val === "飛ぶ" || val === "空を飛ぶ") ? qMaxScore : 0;
+      if (p === qMaxScore) { scores.leading += 20; scores.proof += 20; } else { scores.vulnerable += 30; }
+      tiUserPoints += p; logAction(`Debug:${val}`, p, qMaxScore); next();
     };
     container.appendChild(fixBtn);
   }
@@ -647,59 +688,52 @@ function renderQuestion() {
 
 function next() { currentQ++; renderQuestion(); }
 
-// --- 結果表示＆GAS送信 ---
-// --- 結果表示 ---
 function showResult() {
   showScreen("result-screen");
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
-  // 1. Ti強度（％）を計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
-
-  // 2. 判定用スコアの調整
   let finalScores = { ...scores };
 
-  // 【厳格化：主導Tiの門番】
-  // 強度が82%未満なら、leadingスコアを「マイナス無限大」にして、絶対1位にさせない
-  if (str < 82) {
-    finalScores.leading = -99999;
-    actionLog.push(`[判定補正] 強度不足(${str}%)につき主導Tiを失格処分。`);
+  // 判定ロジック
+  let high = "vulnerable";
+
+  if (str >= 90) {
+    // 【神の領域 (90%以上)】問答無用で主導Ti
+    high = "leading";
+  } else if (str >= 80) {
+    // 【強者帯 (80%〜89%)】主導Ti か 証明Ti
+    high = (finalScores.proof > finalScores.leading) ? "proof" : "leading";
+  } else if (str >= 70) {
+    // 【中堅上位帯 (70%〜79%)】証明、創造、規範、無視(ignoring)のいずれか
+    // ★ みつきの指摘通り、無視Ti(ignoring) をここに追加！ ★
+    const c = { proof: finalScores.proof, creative: finalScores.creative, normative: finalScores.normative, ignoring: finalScores.ignoring };
+    high = Object.keys(c).reduce((a, b) => c[a] > c[b] ? a : b);
+  } else {
+    // 【中堅〜下位帯 (70%未満)】テキストで選んだ「価値観（暗示・動員など）」を優先
+    if (finalScores.mobilizing >= 40) { high = "mobilizing"; }
+    else if (finalScores.suggestive >= 40) { high = "suggestive"; }
+    else {
+      const c = { creative: finalScores.creative, normative: finalScores.normative, ignoring: finalScores.ignoring, vulnerable: finalScores.vulnerable };
+      high = Object.keys(c).reduce((a, b) => c[a] > c[b] ? a : b);
+    }
   }
 
-  // 【動員・暗示の救済】
-  // 強度が低い〜中くらい(40-80%)で、mobilizingやsuggestiveが少しでもあれば優先する
-  if (str < 85) {
-    if (finalScores.mobilizing > 0) finalScores.mobilizing += 50; 
-    if (finalScores.suggestive > 0) finalScores.suggestive += 50;
+  if (seFlag && str < 80) {
+    high = "creative";
+    actionLog.push(`[判定補正] Se衝動を検知したため創造Tiを優先。`);
   }
 
-  // 改めて、スコアが最も高い機能を選択
-  const validKeys = ["leading", "creative", "normative", "vulnerable", "suggestive", "proof", "mobilizing", "ignoring", "fe_lead", "se_lead"];
-  let high = validKeys.reduce((a, b) => (finalScores[a] || 0) > (finalScores[b] || 0) ? a : b);
+  const map = { leading: "主導Ti (LII/LSI)", creative: "創造Ti (ILE/SLE)", normative: "規範Ti (ESI/EII)", vulnerable: "脆弱Ti (SEE/IEE)", suggestive: "暗示Ti (ESE/EIE)", proof: "証明Ti (LIE/LSE)", mobilizing: "動員Ti (SEI/IEI)", ignoring: "無視Ti (ILI/SLI)" };
 
-  // マップ（8機能＋α）
-  const map = { 
-    leading: "主導Ti (LII/LSI)", 
-    creative: "創造Ti (ILE/SLE)", 
-    normative: "規範Ti (ESI/EII)", 
-    vulnerable: "脆弱Ti (SEE/IEE)", 
-    suggestive: "暗示Ti (ESE/EIE)", 
-    proof: "証明Ti (ILI/SLI)", 
-    mobilizing: "動員Ti (SEI/IEI)", 
-    ignoring: "無視Ti (LIE/LSE)", 
-    fe_lead: "感情主導(Fe-Leading)", 
-    se_lead: "感覚主導(Se-Leading)" 
-  };
-  
-  // ダーリンちゃんのセリフ分岐
-  let darlingSpeech = "";
-  if (seFlag) darlingSpeech = darlingResultQuotes.se[Math.floor(Math.random() * darlingResultQuotes.se.length)];
-  else if (str >= 80) darlingSpeech = darlingResultQuotes.high[Math.floor(Math.random() * darlingResultQuotes.high.length)];
-  else if (str >= 50) darlingSpeech = darlingResultQuotes.mid[Math.floor(Math.random() * darlingResultQuotes.mid.length)];
-  else darlingSpeech = darlingResultQuotes.low[Math.floor(Math.random() * darlingResultQuotes.low.length)];
+  let dSpeech = "";
+  if (seFlag) dSpeech = darlingResultQuotes.se[Math.floor(Math.random() * darlingResultQuotes.se.length)];
+  else if (str >= 80) dSpeech = darlingResultQuotes.high[Math.floor(Math.random() * darlingResultQuotes.high.length)];
+  else if (str >= 50) dSpeech = darlingResultQuotes.mid[Math.floor(Math.random() * darlingResultQuotes.mid.length)];
+  else dSpeech = darlingResultQuotes.low[Math.floor(Math.random() * darlingResultQuotes.low.length)];
 
-  let logHtml = "<div data-html2canvas-ignore='true' style='font-size:0.65rem; color:#94a3b8; height:130px; overflow-y:scroll; border:1px solid #475569; padding:10px; margin-top:20px; background:rgba(0,0,0,0.3); text-align:left;'><strong>[システム詳細ログ]</strong><br>";
+  let logHtml = "<div data-html2canvas-ignore='true' style='font-size:0.65rem; color:#94a3b8; height:120px; overflow-y:scroll; border:1px solid #475569; padding:10px; margin-top:20px; background:rgba(0,0,0,0.3); text-align:left;'><strong>[ログ]</strong><br>";
   actionLog.forEach(l => logHtml += `<div style='border-bottom:1px solid #334155; padding:2px;'>${l}</div>`);
   logHtml += "</div>";
 
@@ -708,19 +742,22 @@ function showResult() {
     <div style="font-size: 3.8rem; color: #38bdf8; font-weight:bold; margin: 10px 0; text-shadow:0 0 15px rgba(56,189,248,0.5);">${str}%</div>
     <p style="font-size:1.2rem;">推定配置: <strong style="border-bottom:2px solid #38bdf8;">${map[high]}</strong></p>
     <div style="text-align:left; background:rgba(255,255,255,0.08); padding:20px; border-radius:15px; margin-top:20px; font-size:0.85rem; line-height:1.7;">
-      ${seFlag ? "<p style='color:#ff4d4d; font-weight:bold;'>【ALERT】Se衝動を検知。論理を『支配』の道具とするSLEの才能が眠っています。</p>" : "<p style='color:#a3e635;'>【REPORT】芋虫は生存。論理的一貫性と世界の構造への敬意を維持しています。</p>"}
+      ${seFlag ? "<p style='color:#ff4d4d; font-weight:bold;'>【ALERT】Se衝動検知。</p>" : "<p style='color:#a3e635;'>【REPORT】芋虫生存。</p>"}
       <strong>ダーリンちゃん(ILI)の毒言:</strong><br>
-      <i style="color:#f472b6;">「${darlingSpeech}」</i>
+      <i style="color:#f472b6;">「${dSpeech}」</i>
+      <p style="font-size:0.7rem; color:#94a3b8; margin-top:15px; border-top:1px dashed #475569; padding-top:10px;">
+        ※本診断はTi強度を測る遊具であり、ソシオニクスの8機能を完全に正確に分類するものではありません。あくまで一つの目安としてお楽しみください。
+      </p>
       ${logHtml}
     </div>
     
     <div class="result-actions" data-html2canvas-ignore="true">
-      <button id="save-img-btn" class="action-btn"><i class="fa-solid fa-camera"></i> 結果を画像保存</button>
-      <button id="share-btn" class="action-btn"><i class="fa-solid fa-share-nodes"></i> シェアする</button>
-      <button id="copy-log-btn" class="action-btn"><i class="fa-solid fa-clipboard"></i> ログをコピー</button>
+      <button id="save-img-btn" class="action-btn"><i class="fa-solid fa-camera"></i> 保存</button>
+      <button id="share-btn" class="action-btn"><i class="fa-solid fa-share-nodes"></i> 共有</button>
+      <button id="copy-log-btn" class="action-btn"><i class="fa-solid fa-clipboard"></i> コピー</button>
     </div>
     
-    <button class="choice-btn" data-html2canvas-ignore="true" style="margin-top:20px; border:2px solid #38bdf8;" onclick="location.reload()">再研究（もう一度遊ぶ）</button>
+    <button class="choice-btn" data-html2canvas-ignore="true" style="margin-top:20px; border:2px solid #38bdf8;" onclick="location.reload()">再試行</button>
   `;
 
   // GAS送信
@@ -740,8 +777,16 @@ function showResult() {
   
   // シェア
   document.getElementById('share-btn').onclick = () => {
-    if (navigator.share) navigator.share({ title: 'ソシオTi強度チェッカー', text: `【論理研究室】\n私のTi強度は${str}%、推定配置は【${map[high]}】でした！\n#ソシオニクス\n`, url: window.location.href });
-    else alert("お使いのブラウザは共有機能に対応していません。");
+    if (navigator.share) {
+      navigator.share({ 
+        title: 'ソシオTi強度チェッカー', 
+        // text内にURLを含めない（urlプロパティに任せる）
+        text: `【論理研究室】\n私のTi強度は${str}%、推定配置は【${map[high]}】でした！\n#ソシオTi強度チェッカー #ソシオニクス`, 
+        url: window.location.href 
+      });
+    } else { 
+      alert("お使いのブラウザは共有機能に対応していません。"); 
+    }
   };
   
   // ログコピー
