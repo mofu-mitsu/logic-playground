@@ -693,8 +693,19 @@ function showResult() {
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
+  // 1. Ti強度を計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
   let finalScores = { ...scores };
+
+  // ★【追加：脆弱回答ペナルティ】★
+  // 「正解なんて人それぞれ」「知らん」などの脆弱回答を選んでいる場合、強度％を引き下げる
+  // これにより「パズルは解けるけど価値観は脆弱」な人の強度がバグるのを完全に防ぐ！
+  if (scores.vulnerable > 0) {
+    // 脆弱スコアの蓄積値に応じて、強度(str)を最大35%まで強制マイナス
+    let penalty = Math.min(35, Math.floor(scores.vulnerable * 0.7));
+    str = Math.max(0, str - penalty);
+    actionLog.push(`[強度補正] 脆弱回答の検出により、Ti強度を -${penalty}% 補正しました。`);
+  }
 
   // 判定ロジック
   let high = "vulnerable";
@@ -704,11 +715,9 @@ function showResult() {
     high = "leading";
   } else if (str >= 80) {
     // 【強者帯 (80%〜89%)】主導Ti か 証明Ti
-    // ★較正： proofが僅差（60点差以内）なら証明Tiを優先出力
     high = (finalScores.proof >= finalScores.leading - 60) ? "proof" : "leading";
   } else if (str >= 70) {
     // 【中堅上位帯 (70%〜79%)】証明、創造、規範、無視のいずれか
-    // ★みつきの指摘通り、不自然な加点(adjustedProof)を完全廃止し、純粋なスコアで競わせる！
     const c = { 
       proof: finalScores.proof, 
       creative: finalScores.creative, 
@@ -717,18 +726,31 @@ function showResult() {
     };
     high = Object.keys(c).reduce((a, b) => c[a] > c[b] ? a : b);
   } else {
-    // 【中堅〜下位帯 (70%未満)】テキストで選んだ「価値観（暗示・動員など）」を優先
-    if (finalScores.mobilizing >= 40) { high = "mobilizing"; }
-    else if (finalScores.suggestive >= 40) { high = "suggestive"; }
-    else {
+    // 【中堅〜下位帯 (70%未満)】テキストで選んだ「価値観」を優先
+    // ★ 脆弱(vulnerable)をある程度選んでいたら、最優先で脆弱Tiにする！ ★
+    if (finalScores.vulnerable >= 15) { 
+      high = "vulnerable"; 
+    } else if (finalScores.mobilizing >= 40) { 
+      high = "mobilizing"; 
+    } else if (finalScores.suggestive >= 40) { 
+      high = "suggestive"; 
+    } else {
       const c = { creative: finalScores.creative, normative: finalScores.normative, ignoring: finalScores.ignoring, vulnerable: finalScores.vulnerable };
       high = Object.keys(c).reduce((a, b) => c[a] > c[b] ? a : b);
     }
   }
 
-  if (seFlag && str < 80) {
-    high = "creative";
-    actionLog.push(`[判定補正] Se衝動を検知したため創造Tiを優先。`);
+  // ★【Se衝動（芋虫破壊・四隅）の絶対的優先】★
+  // 進行中にSeFlagが立っていた場合（結果画面での破壊は除くw）、
+  // 強度に関わらず、主導Ti(LII/LSI)はありえないとして強制上書き！
+  if (seFlag) {
+    if (str >= 60) {
+      high = "creative"; // SLEなど
+      actionLog.push(`[判定補正] 破壊的Se衝動を検知したため創造Tiを優先。`);
+    } else {
+      high = "vulnerable"; // SEEなど
+      actionLog.push(`[判定補正] 破壊的Se衝動かつ低強度のため脆弱Tiを優先。`);
+    }
   }
 
   const map = { leading: "主導Ti (LII/LSI)", creative: "創造Ti (ILE/SLE)", normative: "規範Ti (ESI/EII)", vulnerable: "脆弱Ti (SEE/IEE)", suggestive: "暗示Ti (ESE/EIE)", proof: "証明Ti (ILI/SLI)", mobilizing: "動員Ti (SEI/IEI)", ignoring: "無視Ti (LIE/LSE)" };
