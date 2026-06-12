@@ -161,24 +161,50 @@ function goBack() {
 }
 function next() { currentQ++; renderQuestion(); }
 
-let bugClicks = 0; const bug = document.getElementById("bug"); const bugBubble = document.getElementById("bug-bubble"); const bugCont = document.getElementById("bug-container");
-setInterval(() => { if (!bug || bug.classList.contains("splashed")) return; bugCont.style.left = Math.floor(Math.random() * (window.innerWidth - 120)) + "px"; }, 5000);
-// --- 🐛芋虫クリック処理（創造Tiアップ！） ---
+let bugClicks = 0; 
+const bug = document.getElementById("bug"); 
+const bugBubble = document.getElementById("bug-bubble"); 
+const bugCont = document.getElementById("bug-container");
+
+// 最初は透明にしておく
+bugCont.style.opacity = "0";
+bugCont.style.transition = "opacity 0.3s ease-in-out";
+
+setInterval(() => { 
+  if (!bug || bug.classList.contains("splashed")) return; 
+  
+  // ランダムな位置にひょっこり現れる
+  bugCont.style.left = Math.floor(Math.random() * (window.innerWidth - 80)) + "px"; 
+  bugCont.style.opacity = "1"; // 出現
+
+  // 3.5秒経ったらスッと隠れる（邪魔にならないように）
+  setTimeout(() => {
+    if (!bug.classList.contains("splashed")) {
+      bugCont.style.opacity = "0";
+      bugBubble.classList.add("hidden"); // 吹き出しも消す
+    }
+  }, 3500);
+
+}, 7000); // 7秒周期で判定
+
 bug.onclick = () => {
-  if (bugClicks >= 30) return;
-  bugClicks++;
+  if (bugClicks >= 30) return; 
+  bugClicks++; 
   bugBubble.classList.remove("hidden");
-  if (bugClicks === 30) {
+  
+  if (bugClicks === 30) { 
     seFlag = true; 
-    scores.creative += 50;   // 遊びでシステムを破壊する＝創造Ti（SLE/ILE）爆上げ！
-    scores.vulnerable += 20; // 脆弱Tiにも少し
-    bug.innerHTML = "💥"; bug.classList.add("splashed"); 
+    bug.innerHTML = "💥"; 
+    bug.classList.add("splashed"); 
     bugBubble.innerText = "ギャァァァアア！！"; 
-    logAction("芋虫破壊(創造Ti/Se)", 0, 0);
-    setTimeout(() => { if(bugCont) bugCont.style.display = "none"; }, 2500);
-  } else {
-    bugBubble.innerText = `[${bugClicks}/30] ${bugQuotes[bugClicks % bugQuotes.length]}`;
-  }
+    
+    // Se衝動のログを記録
+    if (typeof logAction === "function") logAction("芋虫を討伐(Se)", 0, 0);
+
+    setTimeout(() => { if(bugCont) bugCont.style.display = "none"; }, 2500); 
+  } else { 
+    bugBubble.innerText = `[${bugClicks}/30] ${bugQuotes[bugClicks % bugQuotes.length]}`; 
+  } 
 };
 
 setInterval(() => {
