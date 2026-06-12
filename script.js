@@ -704,11 +704,18 @@ function showResult() {
     high = "leading";
   } else if (str >= 80) {
     // 【強者帯 (80%〜89%)】主導Ti か 証明Ti
-    high = (finalScores.proof > finalScores.leading) ? "proof" : "leading";
+    // ★較正：ミニゲームによるleading偏りを相殺するため、proofが僅差（60点差以内）なら証明Tiを優先出力
+    high = (scores.proof >= scores.leading - 60) ? "proof" : "leading";
   } else if (str >= 70) {
-    // 【中堅上位帯 (70%〜79%)】証明、創造、規範、無視(ignoring)のいずれか
-    // ★ みつきの指摘通り、無視Ti(ignoring) をここに追加！ ★
-    const c = { proof: finalScores.proof, creative: finalScores.creative, normative: finalScores.normative, ignoring: finalScores.ignoring };
+    // 【中堅上位帯 (70%〜79%)】
+    // ★ここでもproofへの偏り補正を適用
+    let adjustedProof = scores.proof + 40; 
+    const c = { 
+      proof: adjustedProof, 
+      creative: scores.creative, 
+      normative: scores.normative, 
+      ignoring: scores.ignoring 
+    };
     high = Object.keys(c).reduce((a, b) => c[a] > c[b] ? a : b);
   } else {
     // 【中堅〜下位帯 (70%未満)】テキストで選んだ「価値観（暗示・動員など）」を優先
@@ -725,7 +732,7 @@ function showResult() {
     actionLog.push(`[判定補正] Se衝動を検知したため創造Tiを優先。`);
   }
 
-  const map = { leading: "主導Ti (LII/LSI)", creative: "創造Ti (ILE/SLE)", normative: "規範Ti (ESI/EII)", vulnerable: "脆弱Ti (SEE/IEE)", suggestive: "暗示Ti (ESE/EIE)", proof: "証明Ti (LIE/LSE)", mobilizing: "動員Ti (SEI/IEI)", ignoring: "無視Ti (ILI/SLI)" };
+  const map = { leading: "主導Ti (LII/LSI)", creative: "創造Ti (ILE/SLE)", normative: "規範Ti (ESI/EII)", vulnerable: "脆弱Ti (SEE/IEE)", suggestive: "暗示Ti (ESE/EIE)", proof: "証明Ti (ILI/SLI)", mobilizing: "動員Ti (SEI/IEI)", ignoring: "無視Ti (LIE/LSE)" };
 
   let dSpeech = "";
   if (seFlag) dSpeech = darlingResultQuotes.se[Math.floor(Math.random() * darlingResultQuotes.se.length)];
