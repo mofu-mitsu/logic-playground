@@ -801,7 +801,7 @@ function showResult() {
 
   // ★ペナルティを -15% に緩和★
   if (scores.vulnerable > 0) {
-    let penalty = Math.min(15, Math.floor(scores.vulnerable * 0.3));
+    let penalty = Math.min(7, Math.floor(scores.vulnerable * 0.3));
     str = Math.max(0, str - penalty);
     if (penalty > 0) actionLog.push(`[強度補正] 脆弱回答により -${penalty}%`);
   }
