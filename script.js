@@ -4,8 +4,8 @@
  */
 
 // ★★★ GASウェブアプリURL ★★★
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyMFoYMXm7JKXL-3CrLJcidpznYMOZEDXzhnMBWE9P3JgJFUQPCZeWWZvuL7KJWFg-CVQ/exec";
-
+const GAS_URL_MAIL = "https://script.google.com/macros/s/AKfycbyMFoYMXm7JKXL-3CrLJcidpznYMOZEDXzhnMBWE9P3JgJFUQPCZeWWZvuL7KJWFg-CVQ/exec"; 
+const GAS_URL_SHEET = "https://script.google.com/macros/s/AKfycbwCORRWpMjZgIQT8qhdOlLHokXgRRN5BRctsf_znFE7W-T-tBrZeXpH6s8R6h5Q7MQ/exec";
 let currentQ = 0;
 let questionOrder = []; 
 let scores = {
@@ -18,6 +18,18 @@ let seFlag = false;
 let questionStartTime = 0;
 let actionLog = []; 
 let history = []; 
+function showToast(message) {
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    document.body.appendChild(toast);
+  }
+  toast.innerText = message;
+  toast.classList.add("show");
+  setTimeout(() => { toast.classList.remove("show"); }, 3000);
+}
+
 
 // イベントリーク（透明なゴミ）防止用配列
 let activeDocListeners = [];
@@ -161,49 +173,94 @@ function goBack() {
 }
 function next() { currentQ++; renderQuestion(); }
 
+// --- 芋虫 🐛 ＆ 蝶 🦋 ギミック ---
+// --- 🐛 芋虫 ＆ 🦋 蝶（モグラ叩き＆羽化・飛翔仕様） ---
 let bugClicks = 0; 
+let isBugDead = false; // 蛹（瀕死）フラグ
+let isButterfly = false; // 蝶フラグ
 const bug = document.getElementById("bug"); 
 const bugBubble = document.getElementById("bug-bubble"); 
 const bugCont = document.getElementById("bug-container");
 
-// 最初は透明にしておく
+// 最初は透明にしておく＆CSSアニメーションの設定
 bugCont.style.opacity = "0";
-bugCont.style.transition = "opacity 0.3s ease-in-out";
+bugCont.style.transition = "opacity 0.3s ease-in-out, transform 2.5s ease-in, left 0.5s ease-out";
 
-setInterval(() => { 
-  if (!bug || bug.classList.contains("splashed")) return; 
+let bugMoveInterval = setInterval(() => { 
+  if (!bug || isBugDead || isButterfly) return; 
   
-  // ランダムな位置にひょっこり現れる
-  bugCont.style.left = Math.floor(Math.random() * (window.innerWidth - 80)) + "px"; 
+  // ランダムな位置にひょっこり出現
+  bugCont.style.left = Math.floor(Math.random() * (window.innerWidth - 120)) + "px"; 
   bugCont.style.opacity = "1"; // 出現
 
   // 3.5秒経ったらスッと隠れる（邪魔にならないように）
   setTimeout(() => {
-    if (!bug.classList.contains("splashed")) {
+    if (!isBugDead && !isButterfly) {
       bugCont.style.opacity = "0";
       bugBubble.classList.add("hidden"); // 吹き出しも消す
     }
   }, 3500);
 
-}, 7000); // 7秒周期で判定
+}, 7000); // 7秒ごとに判定
 
 bug.onclick = () => {
-  if (bugClicks >= 30) return; 
+  // ★★★ 🦋 蝶になった後のタップ処理（大空へ羽ばたく！） ★★★
+  if (isButterfly) {
+    bugBubble.innerText = "LSI: 重力という例外処理を実行します！お先に失礼。";
+    bugBubble.style.color = "#38bdf8";
+    
+    // 【較正】イージングを調整して、画面の一番上までしっかり飛んでから消えるように変更！
+    // cubic-bezier(0.8, 0, 1, 1) により、最初は透明にならず、上部に達した瞬間にスッと溶けるように消えます！
+    bugCont.style.transition = "transform 3.2s cubic-bezier(0.25, 1, 0.5, 1), opacity 3.2s cubic-bezier(0.8, 0, 1, 1)";
+    bugCont.style.transform = "translateY(-140vh) rotate(1080deg) scale(0.2)";
+    bugCont.style.opacity = "0";
+    
+    setTimeout(() => {
+      if(bugCont) bugCont.style.display = "none";
+    }, 3200);
+    
+    showToast("LSI蝶はシステムの外（大空）へ旅立ちました🦋");
+    return;
+  }
+
+  // 通常タップのカウント
   bugClicks++; 
   bugBubble.classList.remove("hidden");
   
   if (bugClicks === 30) { 
+    isBugDead = true; 
     seFlag = true; 
-    bug.innerHTML = "💥"; 
-    bug.classList.add("splashed"); 
-    bugBubble.innerText = "ギャァァァアア！！"; 
     
-    // Se衝動のログを記録
-    if (typeof logAction === "function") logAction("芋虫を討伐(Se)", 0, 0);
-
-    setTimeout(() => { if(bugCont) bugCont.style.display = "none"; }, 2500); 
-  } else { 
+    // ★アニメーションによる透明化を完全に打ち消し、💥をキープする修正★
+    bug.innerHTML = "💥"; 
+    bug.style.animation = "none"; 
+    bug.style.opacity = "1";
+    bug.style.display = "inline-block";
+    
+    bugBubble.innerText = "ギャァァァアア！！（LSI: 秩序の崩壊です…）"; 
+    bugBubble.style.color = "#ef4444";
+    logAction("芋虫破壊(Se)", 0, 0);
+  } 
+  else if (bugClicks === 50) {
+    isButterfly = true;
+    bug.innerHTML = "🦋"; 
+    bug.classList.remove("splashed");
+    bug.style.animation = "none";
+    bug.style.opacity = "1";
+    bug.style.transform = "scale(1.5)"; // 蝶を目立たせるために少し大きく
+    
+    bugBubble.innerText = "LSI: 非合理的な制限（蛹）から解放されました。秩序は自ら構築します。"; 
+    bugBubble.style.color = "#38bdf8";
+    scores.creative += 50; 
+    logAction("バグを仕様に昇華(創造Ti)", 0, 0);
+    showToast("隠し要素：LSI蝶が羽化しました🦋");
+  } 
+  else if (bugClicks < 30) { 
     bugBubble.innerText = `[${bugClicks}/30] ${bugQuotes[bugClicks % bugQuotes.length]}`; 
+  } 
+  else {
+    // 31〜49回目（蛹のピクピク期間。💥が見えるようになったよ！）
+    bugBubble.innerText = `[${bugClicks}/50] LSI: ...規則的にピクピクしています...`; 
   } 
 };
 
@@ -425,23 +482,31 @@ function renderQuestion() {
     }
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="この配置で確定";
     btn.onclick = () => {
-      saveHistory();
-      let corners = 0; let yC = []; let xC = [];
+      saveHistory(); let corners = 0; let yC = []; let xC = [];
       boxes.forEach(b => {
-        const l = parseInt(b.style.left), t = parseInt(b.style.top);
-        yC.push(t); xC.push(l);
+        const l = parseInt(b.style.left), t = parseInt(b.style.top); yC.push(t); xC.push(l);
         if ((l < 50 || l > area.offsetWidth - 80) && (t < 50 || t > area.offsetHeight - 80)) corners++;
       });
-      const isAligned = (Math.max(...yC) - Math.min(...yC) < 20 || Math.max(...xC) - Math.min(...xC) < 20);
+      
+      // X軸、Y軸のバラつきを計算
+      const dY = Math.max(...yC) - Math.min(...yC); 
+      const dX = Math.max(...xC) - Math.min(...xC);
+      
+      // ★みつきの画像のような「2x2のグリッド配置」を検知するロジック
+      // 座標を近いもの同士でグループ化（クラスター化）して、2行2列になっていれば「補助/創造Ti」
+      let uniqueX = xC.sort((a,b)=>a-b).filter((v,i,a) => i===0 || v - a[i-1] > 20).length;
+      let uniqueY = yC.sort((a,b)=>a-b).filter((v,i,a) => i===0 || v - a[i-1] > 20).length;
+      let isGrid = (uniqueX === 2 && uniqueY === 2);
+      
+      let isAligned = (dY < 20 || dX < 20); // 1列に綺麗に並べた場合
       
       let p = 0; let msg = "";
-      if (isAligned) { p = qMaxScore; msg = "綺麗に整列(Ti)"; scores.leading += 25; }
-      else if (corners >= 3) { p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 25; }
+      if (isAligned) { p = qMaxScore; msg = "一列整列(主導Ti)"; scores.leading += 25; }
+      else if (isGrid) { p = qMaxScore; msg = "グリッド配置(創造Ti)"; scores.creative += 25; scores.proof += 10; }
+      else if (corners >= 3) { p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 10; }
       else { p = 10; msg = "適当な配置"; scores.vulnerable += 20; }
-
-      tiUserPoints += p;
-      logAction(msg, p, qMaxScore);
-      next();
+      
+      tiUserPoints += p; logAction(msg, p, qMaxScore); next();
     };
     container.appendChild(area); container.appendChild(btn);
   }
@@ -552,22 +617,34 @@ function renderQuestion() {
   // 9. 文章修正デバッグ (Q19)
   // ------------------------------------------
   else if (type === "text_debug") {
-    const qMaxScore = 30; tiMaxPossible += qMaxScore;
+    const qMaxScore = 40; tiMaxPossible += qMaxScore;
     const desc = document.createElement("p"); desc.style.fontSize="0.85rem"; desc.style.textAlign="left";
-    desc.innerHTML = "<b>※指示：</b> 以下は三段論法です。論理の形式として破綻している部分があります。正しい結論になるように修正した言葉を入力してください。"; container.appendChild(desc);
+    desc.innerHTML = "<b>※指示：</b> 「80％の人がAと回答しました。よってAが多数派です」<br>この主張の論理的欠陥を指摘してください。"; container.appendChild(desc);
     
-    const qText = document.createElement("p"); qText.style.background="rgba(255,255,255,0.05)"; qText.style.padding="10px"; qText.style.textAlign="left";
-    qText.innerHTML = "「すべての鳥は空を飛ぶ。<br>ペンギンは鳥である。<br>ゆえに、ペンギンは<span style='color:#ef4444; font-weight:bold;'>飛ばない</span>。」"; container.appendChild(qText);
-    
-    const input = document.createElement("input"); input.className="debug-input"; input.placeholder="正しい言葉を入力";
+    const input = document.createElement("textarea"); input.className="feedback-input"; input.placeholder="理由を記述してください...";
     container.appendChild(input);
-    const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="修正を適用";
+    
+    const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="回答を提出";
     fixBtn.onclick = () => {
       saveHistory(); 
       let val = input.value.trim();
-      let p = (val === "飛ぶ" || val === "空を飛ぶ") ? qMaxScore : 0;
-      if (p === qMaxScore) { scores.leading += 20; scores.proof += 20; } else { scores.vulnerable += 30; }
-      tiUserPoints += p; logAction(`Debug:${val}`, p, qMaxScore); next();
+      let p = 0; let msg = "";
+      
+      // ★キーワードを大幅に追加★
+      const leadingKeywords = ["母数", "全体", "分母", "前提", "対象", "標本", "バイアス", "偏り", "割合", "有効", "代表性", "定義"];
+      const proofKeywords = ["他", "選択肢", "条件", "以外"];
+
+      if (leadingKeywords.some(kw => val.includes(kw))) {
+        p = qMaxScore; scores.leading += 30; msg = "前提・統計的欠陥を指摘(主導Ti)";
+      } else if (proofKeywords.some(kw => val.includes(kw))) {
+        p = qMaxScore; scores.proof += 25; scores.creative += 15; msg = "変数の抜けを指摘(証明/創造Ti)";
+      } else if (val.length < 5) {
+        p = 0; scores.vulnerable += 20; msg = "思考放棄(脆弱Ti)";
+      } else {
+        p = 15; scores.normative += 15; msg = "一般的な回答(規範Ti)";
+      }
+      
+      tiUserPoints += p; logAction(msg, p, qMaxScore); next();
     };
     container.appendChild(fixBtn);
   }
@@ -719,18 +796,14 @@ function showResult() {
   const res = document.getElementById("result-screen");
   const selfId = document.getElementById("self-id").value || "未登録研究員";
 
-  // 1. Ti強度を計算
   let str = Math.min(100, Math.floor((tiUserPoints / tiMaxPossible) * 100));
   let finalScores = { ...scores };
 
-  // ★【追加：脆弱回答ペナルティ】★
-  // 「正解なんて人それぞれ」「知らん」などの脆弱回答を選んでいる場合、強度％を引き下げる
-  // これにより「パズルは解けるけど価値観は脆弱」な人の強度がバグるのを完全に防ぐ！
+  // ★ペナルティを -15% に緩和★
   if (scores.vulnerable > 0) {
-    // 脆弱スコアの蓄積値に応じて、強度(str)を最大35%まで強制マイナス
-    let penalty = Math.min(35, Math.floor(scores.vulnerable * 0.7));
+    let penalty = Math.min(15, Math.floor(scores.vulnerable * 0.3));
     str = Math.max(0, str - penalty);
-    actionLog.push(`[強度補正] 脆弱回答の検出により、Ti強度を -${penalty}% 補正しました。`);
+    if (penalty > 0) actionLog.push(`[強度補正] 脆弱回答により -${penalty}%`);
   }
 
   // 判定ロジック
@@ -799,29 +872,51 @@ function showResult() {
       ${seFlag ? "<p style='color:#ff4d4d; font-weight:bold;'>【ALERT】Se衝動検知。</p>" : "<p style='color:#a3e635;'>【REPORT】芋虫生存。</p>"}
       <strong>ダーリンちゃん(ILI)の毒言:</strong><br>
       <i style="color:#f472b6;">「${dSpeech}」</i>
-      <p style="font-size:0.7rem; color:#94a3b8; margin-top:15px; border-top:1px dashed #475569; padding-top:10px;">
-        ※本診断はTi強度を測る遊具であり、ソシオニクスの8機能を完全に正確に分類するものではありません。あくまで一つの目安としてお楽しみください。
-      </p>
       ${logHtml}
     </div>
     
+    <!-- フィードバック送信フォーム -->
+    <div data-html2canvas-ignore="true" style="margin-top:20px; background:rgba(0,0,0,0.3); padding:15px; border-radius:10px;">
+      <p style="font-size:0.8rem; color:#38bdf8; margin-bottom:5px;">💡 開発者へのフィードバック / 深掘り理由</p>
+      <textarea id="feedback-text" class="feedback-input" placeholder="例：〇〇の問題は△△の理由で選びました。文句・感想歓迎！"></textarea>
+      <button id="send-feedback-btn" class="choice-btn" style="padding:10px; font-size:0.85rem;">フィードバックを送信</button>
+    </div>
+
     <div class="result-actions" data-html2canvas-ignore="true">
       <button id="save-img-btn" class="action-btn"><i class="fa-solid fa-camera"></i> 保存</button>
       <button id="share-btn" class="action-btn"><i class="fa-solid fa-share-nodes"></i> 共有</button>
       <button id="copy-log-btn" class="action-btn"><i class="fa-solid fa-clipboard"></i> コピー</button>
     </div>
-    
     <button class="choice-btn" data-html2canvas-ignore="true" style="margin-top:20px; border:2px solid #38bdf8;" onclick="location.reload()">再試行</button>
   `;
 
-  // GAS送信
-  if (GAS_URL && GAS_URL.startsWith("http")) {
-    fetch(GAS_URL, {
-      method: 'POST', body: JSON.stringify({ selfId: selfId, strength: str, resultType: map[high], actionLog: actionLog }),
-      headers: { 'Content-Type': 'application/json' }, mode: 'no-cors'
-    }).catch(e => console.log("GAS Send Error:", e));
+  // ★GASへの送信にフィードバックを追加★
+  const sendData = { selfId: selfId, strength: str, resultType: map[high], actionLog: actionLog };
+  
+  if (GAS_URL_MAIL && GAS_URL_MAIL.startsWith("http")) {
+    fetch(GAS_URL_MAIL, { method: 'POST', body: JSON.stringify(sendData), headers: { 'Content-Type': 'application/json' }, mode: 'no-cors' }).catch(e => console.log(e));
+  }
+  if (GAS_URL_SHEET && GAS_URL_SHEET.startsWith("http")) {
+    fetch(GAS_URL_SHEET, { method: 'POST', body: JSON.stringify(sendData), headers: { 'Content-Type': 'application/json' }, mode: 'no-cors' }).catch(e => console.log(e));
   }
 
+  // --- フィードバック送信（トースト対応 ＆ 二刀流送信） ---
+  document.getElementById('send-feedback-btn').onclick = () => {
+    const fbText = document.getElementById('feedback-text').value;
+    if (!fbText) return showToast("テキストを入力してください。");
+    
+    const fbData = { ...sendData, feedback: fbText };
+    
+    if (GAS_URL_MAIL && GAS_URL_MAIL.startsWith("http")) {
+      fetch(GAS_URL_MAIL, { method: 'POST', body: JSON.stringify(fbData), headers: { 'Content-Type': 'application/json' }, mode: 'no-cors' });
+    }
+    if (GAS_URL_SHEET && GAS_URL_SHEET.startsWith("http")) {
+      fetch(GAS_URL_SHEET, { method: 'POST', body: JSON.stringify(fbData), headers: { 'Content-Type': 'application/json' }, mode: 'no-cors' });
+    }
+    
+    showToast("フィードバックを送信しました！");
+    document.getElementById('feedback-text').value = "";
+  };
   // 画像保存
   document.getElementById('save-img-btn').onclick = () => {
     html2canvas(document.querySelector('.glass-container'), {backgroundColor: '#0f172a'}).then(canvas => {
@@ -845,6 +940,8 @@ function showResult() {
   
   // ログコピー
   document.getElementById('copy-log-btn').onclick = () => {
-    navigator.clipboard.writeText("【システム詳細ログ】\n" + actionLog.join("\n")).then(() => { alert("詳細ログをコピーしました！"); });
+    navigator.clipboard.writeText("【システム詳細ログ】\n" + actionLog.join("\n")).then(() => { 
+      showToast("詳細ログをコピーしました！"); // alertからshowToastに変更！
+    });
   };
 }
