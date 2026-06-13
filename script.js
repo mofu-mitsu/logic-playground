@@ -653,18 +653,38 @@ function renderQuestion() {
     tiMaxPossible += qMaxScore;
     const area = document.createElement("div"); 
     area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px";
+    
+    // ★タイトルに「格子状」の補足を追加して分かりやすく！
+    title.innerHTML = "【空間システム構築】<br>指示：4つの箱をドラッグし、『互いのX座標とY座標の間隔が完全に等しくなる状態（グリッド：格子状の整列）』を構築せよ。";
+
     const boxes = [];
     for (let i = 0; i < 4; i++) {
       const b = document.createElement("div"); b.className = "align-box"; b.style.position="absolute";
       b.style.top = (i * 45) + "px"; b.style.left = (i * 45) + "px";
       
-      // ★ offX, offY を受け取ってズレを打ち消す！
       setupDraggable(b, (x, y, el, target, offX, offY) => {
         const r = area.getBoundingClientRect(); 
         el.style.position = 'absolute';
-        // 指で掴んだズレ(offX)を引くことで、置いた場所にピタッと止まる！
+        
         let newLeft = x - r.left - offX;
         let newTop = y - r.top - offY;
+        
+        // ★【マグネット吸着機能】★
+        // 他の箱の座標に近づいたら（15px以内）、磁石のように座標を自動でピタッと一致させる！
+        boxes.forEach(other => {
+          if (other === el) return; // 自分自身は除外
+          const oL = parseInt(other.style.left);
+          const oT = parseInt(other.style.top);
+          
+          if (!isNaN(oL) && Math.abs(newLeft - oL) < 15) {
+            newLeft = oL; // X座標をスナップして完全に一列に！
+          }
+          if (!isNaN(oT) && Math.abs(newTop - oT) < 15) {
+            newTop = oT; // Y座標をスナップして完全に一列に！
+          }
+        });
+
+        // 枠外はみ出し防止
         el.style.left = Math.min(Math.max(newLeft, 0), r.width - 50) + "px";
         el.style.top = Math.min(Math.max(newTop, 0), r.height - 50) + "px";
         el.dataset.moved = "true";
@@ -684,11 +704,10 @@ function renderQuestion() {
       const dY = Math.max(...yC) - Math.min(...yC); 
       const dX = Math.max(...xC) - Math.min(...xC);
       
-      // ★1. 【裏技ルート：特異点（シンギュラリティ）配置の判定】★
-      // 4つの箱の最大座標と最小座標の差が、すべて25px未満（ほぼ完全に一箇所に重ねている状態）
+      // 特異点（レイヤー重ね）配置の判定
       let isOverlap = (dY < 25 && dX < 25);
 
-      // ★2. 「2x2のグリッド配置」を検知するロジック（元配列を壊さないように浅いコピーでソート）
+      // 2x2のグリッド配置」を検知するロジック
       let isGrid = false;
       if (!isOverlap) {
         let uniqueX = [...xC].sort((a,b)=>a-b).filter((v,i,a) => i===0 || v - a[i-1] > 20).length;
@@ -700,7 +719,6 @@ function renderQuestion() {
       
       let p = 0; let msg = "";
       if (isOverlap) {
-        // ルールハック（へ理屈）を見抜いて重ねてきた人に満点！
         p = qMaxScore; msg = "特異点(シンギュラリティ)配置(証明/創造Ti)";
         scores.proof += 30; scores.creative += 20; 
       }
