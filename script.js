@@ -12,6 +12,7 @@ let scores = {
   leading: 0, creative: 0, normative: 0, vulnerable: 0,
   suggestive: 0, proof: 0, mobilizing: 0, ignoring: 0
 };
+let wakaraniCount = 0; 
 let tiUserPoints = 0;   
 let tiMaxPossible = 0; 
 let seFlag = false;    
@@ -74,7 +75,7 @@ document.getElementById("start-btn").onclick = () => {
   
   // ★スタート時にリセット★
   textChoiceCounts = { leading: 0, creative: 0, normative: 0, vulnerable: 0, suggestive: 0, proof: 0, mobilizing: 0, ignoring: 0 };
-  
+  wakaraniCount = 0;
   seFlag = false;
   processLoading("論理マトリックスを初期化中...", () => { showScreen("question-screen"); renderQuestion(); });
 };
@@ -174,9 +175,37 @@ function goBack() {
   clearDocListeners(); // ゴミ掃除
   const h = history.pop();
   currentQ = h.currentQ; scores = h.scores; tiUserPoints = h.tiUserPoints; tiMaxPossible = h.tiMaxPossible; actionLog = h.actionLog; seFlag = h.seFlag;
+  wakaraniCount = h.wakaraniCount; // ★ 追加！
   renderQuestion();
 }
 function next() { currentQ++; renderQuestion(); }
+
+// --- ダーリンちゃん 破壊ギミック ---
+let darlingClicks = 0;
+const darlingIcon = document.getElementById("darling");
+
+if (darlingIcon) {
+  darlingIcon.onclick = () => {
+    darlingClicks++;
+    const b = document.getElementById("darling-bubble");
+    b.classList.remove("hidden");
+    
+    if (darlingClicks === 5) {
+      b.innerText = "ちょっと、何するのよ！痛いんだけど！";
+    } else if (darlingClicks === 10) {
+      seFlag = true; // Se破壊衝動フラグON
+      darlingIcon.innerHTML = "💥";
+      b.innerText = "システム強制終了...バイバイ、ダーリン...";
+      b.style.color = "#ef4444";
+      scores.creative += 30; // SLE/ILE的行動
+      logAction("ダーリンちゃん破壊(Se)", 0, 0);
+      setTimeout(() => { document.getElementById("darling-container").style.display = "none"; }, 2000);
+    } else if (darlingClicks < 10) {
+      b.innerText = "やめてよ！私の論理回路に触らないで！";
+    }
+  };
+}
+
 
 // --- 芋虫 🐛 ＆ 蝶 🦋 ギミック ---
 // --- 🐛 芋虫 ＆ 🦋 蝶（モグラ叩き＆羽化・飛翔仕様） ---
@@ -886,7 +915,7 @@ fixBtn.onclick = () => {
     tiMaxPossible += qMaxScore;
     const treeF = document.createElement("div"); treeF.className="folder"; treeF.style.width="95%"; treeF.innerHTML="<b>食べ物</b>";
     const treeP = document.createElement("div"); treeP.style.padding="10px"; treeP.style.display="flex"; treeP.style.gap="8px"; treeP.style.flexWrap="wrap";
-    ["いちご","トマト","草","耳のキノコ","脇のもやし"].forEach(tx => {
+    ["いちご","トマト","草", "バナナ", "パイナップル","耳のキノコ","脇のもやし"].forEach(tx => {
       const item = document.createElement("div"); item.className="draggable-item"; item.innerText=tx;
       setupDraggable(item, (x,y,el,target) => {
         if(target && target.closest(".folder")) treeF.appendChild(el); else treeP.appendChild(el);
@@ -897,9 +926,12 @@ fixBtn.onclick = () => {
     const ok = document.createElement("button"); ok.className="choice-btn"; ok.innerText="確定";
     ok.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ここで分母加算
       const inFolder = Array.from(treeF.querySelectorAll('.draggable-item')).map(el => el.innerText);
       let p = 0; let msg = "";
-      if (inFolder.length === 2 && inFolder.includes("いちご") && inFolder.includes("トマト")) {
+      
+      // ★【較正】要素数を「2」から「4」に修正！
+      if (inFolder.length === 4 && inFolder.includes("いちご") && inFolder.includes("トマト") && inFolder.includes("バナナ") && inFolder.includes("パイナップル")) {
         scores.leading += 30; p = qMaxScore; msg = "厳密分類(主導Ti)";
       } else if (inFolder.includes("耳のキノコ") || inFolder.includes("脇のもやし")) {
         scores.creative += 30; p = qMaxScore; msg = "創造分類(創造Ti)";
@@ -993,28 +1025,57 @@ fixBtn.onclick = () => {
   }
 
   // --- 共通フッター ---
-  const footer = document.createElement("div");
-  footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.gap = "10px";
+// --- フッター（戻る ＆ スキップ ＆ わからない） ---
+  const footer = document.createElement("div"); 
+  footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.flexWrap = "wrap"; footer.style.gap = "10px";
 
-  const backBtn = document.createElement("button");
+  const backBtn = document.createElement("button"); 
   backBtn.className = "choice-btn"; backBtn.style.flex = "1"; backBtn.style.background = "rgba(255,255,255,0.05)";
-  backBtn.innerHTML = "<i class='fa-solid fa-arrow-left'></i> 戻る";
-  backBtn.onclick = goBack;
+  backBtn.innerHTML = "<i class='fa-solid fa-arrow-left'></i> 戻る"; 
+  backBtn.onclick = goBack; 
   if (history.length === 0) backBtn.style.opacity = "0.3";
 
-  const skipBtn = document.createElement("button");
+  // ① 理論派向けのスキップ（時間経過で判定が変わる！）
+  const skipBtn = document.createElement("button"); 
   skipBtn.className = "choice-btn"; skipBtn.style.flex = "2"; skipBtn.style.background = "rgba(100,116,139,0.2)";
-  skipBtn.innerHTML = "判定不能 / スキップ";
-    skipBtn.onclick = () => {
-    saveHistory();
-    tiMaxPossible += 10; // スキップした分も少しだけ分母に足す
-    scores.vulnerable += 15; // 40から15へマイルドに
-    logAction("Skip", 0, 10); 
-    next(); 
+  skipBtn.innerHTML = "解なし / 判定保留"; 
+  skipBtn.onclick = () => { 
+    saveHistory(); 
+    const elapsed = Date.now() - questionStartTime;
+    let p = 0;
+    // 15秒以上悩んだ末のスキップは「選択肢への不服（Ti的こだわり）」とみなす！
+    if (elapsed > 15000) {
+      scores.ignoring += 25; scores.leading += 10;
+      p = 15; // 考えた努力とこだわりに対して部分点を与える
+      logAction("熟考の末の保留(Tiのこだわり)", p, 0);
+    } else {
+      scores.vulnerable += 30;
+      logAction("即決スキップ", p, 0);
+    }
+    tiUserPoints += p; next(); 
   };
 
-  footer.appendChild(backBtn);
-  footer.appendChild(skipBtn);
+  // ② 思考放棄ボタンｗｗｗ
+  const wakaraniBtn = document.createElement("button"); 
+  wakaraniBtn.className = "choice-btn"; wakaraniBtn.style.flex = "3"; wakaraniBtn.style.background = "rgba(239, 68, 68, 0.2)";
+  wakaraniBtn.style.color = "#fff";
+  wakaraniBtn.innerHTML = "(  ˙꒳​˙ ) ﾁｮｯﾄﾅﾆｲｯﾃﾙｶﾜｶﾗﾅｲ";
+  wakaraniBtn.onclick = () => {
+    saveHistory();
+    wakaraniCount++; // ★ 押した回数をカウント！
+    
+    // 性格判定は少しだけ脆弱・暗示・動員に散らす（極端な判定崩れを防止）
+    scores.vulnerable += 10;
+    scores.suggestive += 5;
+    scores.mobilizing += 5;
+    
+    logAction("思考放棄(ﾁｮｯﾄﾅﾆｲｯﾃﾙｶﾜｶﾗﾅｲ)", 0, 0);
+    next();
+  };
+
+  footer.appendChild(backBtn); 
+  footer.appendChild(skipBtn); 
+  footer.appendChild(wakaraniBtn); 
   container.appendChild(footer);
 }
 
@@ -1036,7 +1097,11 @@ function showResult() {
     str = Math.max(0, str - penalty);
     actionLog.push(`[強度補正] 脆弱回答を${textChoiceCounts.vulnerable}回選択したため強度を -${penalty}%`);
   }
-
+  if (wakaraniCount > 0) {
+    let wakaPenalty = wakaraniCount * 10; // 1回につき10%減点！
+    str = Math.max(0, str - wakaPenalty);
+    actionLog.push(`[強度補正] ( ˙꒳​˙ )ボタンを${wakaraniCount}回押したため -${wakaPenalty}%`);
+  }
   // ★【みつき定義：階層別のコンボ（2回以上の選択）を検出するヘルパー】★
   // スコア競争に負けがちな mid-tier 機能たちを、テキストの選択回数（コンボ）で優先救済する
   function getComboFunc(targetList) {
