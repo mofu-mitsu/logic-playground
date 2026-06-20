@@ -21,7 +21,7 @@ const questions = [
   },
   {
     id: 3,
-    type: "align",
+    type: "align_fix",
     text: "【空間認識テスト】<br>以下の図形の中に1つだけズレているものがあります。クリックして修正してください。",
   },
   {
