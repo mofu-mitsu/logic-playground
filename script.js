@@ -337,17 +337,17 @@ function renderQuestion() {
   // 【みつき定義：強度重み係数】これをすべての計算の基盤にする
   const tiStrengthWeights = {
     leading: 1.0,    // 4D: 主導 (最強)
-    proof: 0.9,      // 4D: 証明 (最強レベル)
+    proof: 1.0,      // 4D: 証明 (最強レベル - 1.0に較正済)
     creative: 0.8,   // 3D: 創造 (強い)
-    ignoring: 0.7,   // 3D: 無視 (強いけど使わない)
-    mobilizing: 0.5, // 2D: 動員 (普通)
-    normative: 0.4,  // 2D: 規範 (普通)
-    suggestive: 0.2, // 1D: 暗示 (弱い)
-    vulnerable: 0.1  // 1D: 脆弱 (最弱)
+    ignoring: 0.8,   // 3D: 無視 (強い)
+    mobilizing: 0.6, // 2D: 動員 (普通)
+    normative: 0.5,  // 2D: 規範 (普通)
+    suggestive: 0.4, // 1D: 暗示 (弱い)
+    vulnerable: 0.2  // 1D: 脆弱 (最弱)
   };
 
   // ==========================================
-  // ギミック分岐：一切の共通化を廃止し詳細に記述
+  // ギミック分岐：分母バグ完全排除 ＆ 最新ロジック統合
   // ==========================================
 
   // ------------------------------------------
@@ -372,46 +372,50 @@ function renderQuestion() {
       btn.className = "choice-btn"; btn.style.borderColor = "#f472b6"; btn.innerText = c.t;
       btn.onclick = () => {
         saveHistory();
-        tiMaxPossible += qMaxScore; // 分母確定
+        tiMaxPossible += qMaxScore; // ★クリック時にのみ分母加算！
         scores[c.f] += c.s;
         
-        let p = (c.f === "leading" || c.f === "proof") ? qMaxScore : (c.s * tiStrengthWeights[c.f]);
+        let p = (c.f === "leading" || c.f === "proof") ? qMaxScore : (c.s * (tiStrengthWeights[c.f] || 0.1));
         tiUserPoints += p;
         logAction(c.t.substring(0,6), Math.round(p), qMaxScore);
         next();
       };
       container.appendChild(btn);
     });
-    return;
+    return; // 介入画面はフッターを出さない
   }
 
   // ------------------------------------------
-  // 2. 通常のテキスト選択肢系 (いちご、動員など)
+  // 2. 通常のテキスト選択肢系
   // ------------------------------------------
-// --- 2. 通常の選択肢系 ---
-// 2. 通常のテキスト選択肢系 (Q17のダーリン介入の「次」にあるやつね！)
   else if (["choice", "time_trap", "strawberry_logic", "emotion_logic", "unresolved_logic", "diogenes_trap", "suggestive_ti", "ti_valued_check", "mobilizing_ti_gimmick"].includes(type)) {
+    // 選択肢の中の最大スコアをその問題の満点とする
     const qMaxScore = Math.max(...q.choices.map(c => c.score || 0), 10);
-    tiMaxPossible += qMaxScore;
-
     const shuffled = [...q.choices].sort(() => Math.random() - 0.5);
+    
     shuffled.forEach(c => {
       const btn = document.createElement("button"); btn.className = "choice-btn"; btn.innerText = c.text;
       btn.onclick = () => {
         saveHistory(); 
+        tiMaxPossible += qMaxScore; // ★クリック時にのみ分母加算！
+
         const elapsed = Date.now() - questionStartTime;
+        // 1.2秒未満の適当プレイはペナルティ
         if (elapsed < 1200) { scores.vulnerable += 25; scores.leading -= 15; }
 
         let basePoints = c.score || 0;
         scores[c.func] += basePoints;
 
-        // ★ここを追加！テキストで選んだ機能をカウント★
+        // ★コンボ救済用に選んだ機能をカウント
         if (textChoiceCounts[c.func] !== undefined) textChoiceCounts[c.func]++;
 
-        // 強度の計算
+        // 強度（分子）の計算。主導と証明なら問答無用で満点！
         let addedPoints = 0;
-        if (c.func === "leading" || c.func === "proof") { addedPoints = qMaxScore; } 
-        else { addedPoints = basePoints * (tiStrengthWeights[c.func] || 0.1); }
+        if (c.func === "leading" || c.func === "proof") { 
+          addedPoints = qMaxScore; 
+        } else { 
+          addedPoints = basePoints * (tiStrengthWeights[c.func] || 0.1); 
+        }
         tiUserPoints += addedPoints;
 
         logAction(c.text.substring(0,10), Math.round(addedPoints), qMaxScore);
@@ -422,15 +426,10 @@ function renderQuestion() {
   }
 
   // ------------------------------------------
-  // 3. スライダー (Q2)
+  // 3. 動くタイミングバー (精密制御・やり直し評価版)
   // ------------------------------------------
-// ------------------------------------------
-  // 3. 動くタイミングバー (旧：スライダー)
-  // ------------------------------------------
-  else if (type === "timing_bar") {
+  else if (type === "timing_bar" || type === "slider") { // sliderの表記ブレも吸収
     const qMaxScore = 40;
-    tiMaxPossible += qMaxScore;
-
     const wrap = document.createElement("div");
     wrap.style.position = "relative"; wrap.style.width = "100%"; wrap.style.height = "45px";
     wrap.style.background = "rgba(0,0,0,0.5)"; wrap.style.border = "2px solid #38bdf8";
@@ -477,13 +476,11 @@ function renderQuestion() {
     actionBtn.onclick = () => {
       if (isMoving) {
         isMoving = false; cancelAnimationFrame(animId);
-        actionBtn.innerText = "やり直す"; 
-        actionBtn.style.background = "rgba(255,255,255,0.1)";
+        actionBtn.innerText = "やり直す"; actionBtn.style.background = "rgba(255,255,255,0.1)";
         submitBtn.style.display = "block"; 
       } else {
         isMoving = true; retryCount++;
-        actionBtn.innerText = "ストップ！"; 
-        actionBtn.style.background = "rgba(56, 189, 248, 0.1)";
+        actionBtn.innerText = "ストップ！"; actionBtn.style.background = "rgba(56, 189, 248, 0.1)";
         submitBtn.style.display = "none"; 
         animate(); 
       }
@@ -491,168 +488,37 @@ function renderQuestion() {
 
     submitBtn.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       const v = parseFloat(pos.toFixed(1));
       const diff = Math.abs(v - 50.0);
       
       let p = 0;
-      // ★1. 判定範囲をマイルドに緩和（誤差0.8までは実質50.0と同等として満点！）★
-      if (diff <= 0.8) {
-        p = qMaxScore; // 満点 (40pt)
-      } else if (diff <= 2.5) {
-        p = 25; // 誤差2.5%までは部分点 (25pt)
-      } else {
-        p = 10; // 大きくズレても、とりあえず10ptは保証
-      }
+      // 誤差0.8までは実質50.0と同等として満点！
+      if (diff <= 0.8) { p = qMaxScore; } else if (diff <= 2.5) { p = 25; } else { p = 10; }
 
-      // ★2. みつき考案：努力賞ボーナス（リトライ救済）★
-      // ピタリ賞が取れなくても、5回以上やり直して『完璧さへの執着』を示した人には救済点を付与！
-      if (retryCount >= 5 && p < qMaxScore) {
-        p = Math.min(qMaxScore, p + 15); // 頑張って挑戦した人に＋15点の努力賞！
-      }
+      // 努力賞ボーナス
+      if (retryCount >= 5 && p < qMaxScore) p = Math.min(qMaxScore, p + 15);
 
-      // 性格判定スコアの計算も、行動（挑戦回数）に連動させる
-      if (diff <= 0.8) { 
-        scores.leading += 30; scores.proof += 10; 
-      } else if (diff <= 2.5) { 
-        scores.normative += 20; 
-      } else { 
-        // ズレた場合、即諦めた（やり直し1回以下）なら脆弱Ti
-        if (retryCount <= 1) {
-          scores.vulnerable += 30; scores.ignoring += 10;
-        } else {
-          // 何回もやったけどダメだった（論理的にやりたいけどできない）なら動員/暗示
-          scores.mobilizing += 20; scores.suggestive += 15;
-        }
+      if (diff <= 0.8) { scores.leading += 30; scores.proof += 10; } 
+      else if (diff <= 2.5) { scores.normative += 20; } 
+      else { 
+        if (retryCount <= 1) { scores.vulnerable += 30; scores.ignoring += 10; } 
+        else { scores.mobilizing += 20; scores.suggestive += 15; }
       }
 
       tiUserPoints += p;
-      logAction(`TimingBar:${v.toFixed(1)} (リトライ:${retryCount}回)`, p, qMaxScore);
+      logAction(`Bar:${v.toFixed(1)} (再:${retryCount}回)`, p, qMaxScore);
       next();
     };
 
-    container.appendChild(wrap); container.appendChild(valDisp); 
-    container.appendChild(actionBtn); container.appendChild(submitBtn);
+    container.appendChild(wrap); container.appendChild(valDisp); container.appendChild(actionBtn); container.appendChild(submitBtn);
   }
 
   // ------------------------------------------
   // 4. 空間認識：ズレ直し (Q3)
   // ------------------------------------------
-// ------------------------------------------
-  // 3. 動くタイミングバー (精密制御・やり直し評価版)
-  // ------------------------------------------
-  else if (type === "timing_bar") {
-    const qMaxScore = 40;
-    tiMaxPossible += qMaxScore;
-
-    const wrap = document.createElement("div");
-    wrap.style.position = "relative"; wrap.style.width = "100%"; wrap.style.height = "45px";
-    wrap.style.background = "rgba(0,0,0,0.5)"; wrap.style.border = "2px solid #38bdf8";
-    wrap.style.borderRadius = "25px"; wrap.style.margin = "20px 0"; wrap.style.overflow = "hidden";
-
-    const targetLine = document.createElement("div");
-    targetLine.style.position = "absolute"; targetLine.style.left = "50%"; targetLine.style.top = "0";
-    targetLine.style.width = "4px"; targetLine.style.height = "100%";
-    targetLine.style.background = "#f472b6"; targetLine.style.transform = "translateX(-50%)";
-    targetLine.style.boxShadow = "0 0 10px #f472b6";
-    wrap.appendChild(targetLine);
-
-    const cursor = document.createElement("div");
-    cursor.style.position = "absolute"; cursor.style.left = "0%"; cursor.style.top = "0";
-    cursor.style.width = "12px"; cursor.style.height = "100%";
-    cursor.style.background = "#a3e635"; cursor.style.transform = "translateX(-50%)";
-    cursor.style.boxShadow = "0 0 10px #a3e635";
-    wrap.appendChild(cursor);
-
-    const valDisp = document.createElement("div");
-    valDisp.className = "slider-value"; valDisp.innerText = "0.0";
-
-    const actionBtn = document.createElement("button");
-    actionBtn.className = "choice-btn"; actionBtn.innerText = "ストップ！";
-    
-    const submitBtn = document.createElement("button");
-    submitBtn.className = "choice-btn"; submitBtn.innerText = "この数値で確定する";
-    submitBtn.style.display = "none"; submitBtn.style.border = "2px solid #38bdf8";
-
-    let pos = 0; let dir = 1; let speed = 1.3; 
-    let isMoving = true; let animId; let retryCount = 0; 
-
-    const animate = () => {
-      if (!isMoving) return;
-      pos += speed * dir;
-      if (pos >= 100) { pos = 100; dir = -1; }
-      if (pos <= 0) { pos = 0; dir = 1; }
-      cursor.style.left = pos + "%";
-      valDisp.innerText = pos.toFixed(1);
-      animId = requestAnimationFrame(animate);
-    };
-    animId = requestAnimationFrame(animate); 
-
-    actionBtn.onclick = () => {
-      if (isMoving) {
-        isMoving = false; cancelAnimationFrame(animId);
-        actionBtn.innerText = "やり直す"; 
-        actionBtn.style.background = "rgba(255,255,255,0.1)";
-        submitBtn.style.display = "block"; 
-      } else {
-        isMoving = true; retryCount++;
-        actionBtn.innerText = "ストップ！"; 
-        actionBtn.style.background = "rgba(56, 189, 248, 0.1)";
-        submitBtn.style.display = "none"; 
-        animate(); 
-      }
-    };
-
-    submitBtn.onclick = () => {
-      saveHistory();
-      const v = parseFloat(pos.toFixed(1));
-      const diff = Math.abs(v - 50.0);
-      
-      let p = 0;
-      // ★1. 判定範囲をマイルドに緩和（誤差0.8までは実質50.0と同等として満点！）★
-      if (diff <= 0.8) {
-        p = qMaxScore; // 満点 (40pt)
-      } else if (diff <= 2.5) {
-        p = 25; // 誤差2.5%までは部分点 (25pt)
-      } else {
-        p = 10; // 大きくズレても、とりあえず10ptは保証
-      }
-
-      // ★2. みつき考案：努力賞ボーナス（リトライ救済）★
-      // ピタリ賞が取れなくても、5回以上やり直して『完璧さへの執着』を示した人には救済点を付与！
-      if (retryCount >= 5 && p < qMaxScore) {
-        p = Math.min(qMaxScore, p + 15); // 頑張って挑戦した人に＋15点の努力賞！
-      }
-
-      // 性格判定スコアの計算も、行動（挑戦回数）に連動させる
-      if (diff <= 0.8) { 
-        scores.leading += 30; scores.proof += 10; 
-      } else if (diff <= 2.5) { 
-        scores.normative += 20; 
-      } else { 
-        // ズレた場合、即諦めた（やり直し1回以下）なら脆弱Ti
-        if (retryCount <= 1) {
-          scores.vulnerable += 30; scores.ignoring += 10;
-        } else {
-          // 何回もやったけどダメだった（論理的にやりたいけどできない）なら動員/暗示
-          scores.mobilizing += 20; scores.suggestive += 15;
-        }
-      }
-
-      tiUserPoints += p;
-      logAction(`TimingBar:${v.toFixed(1)} (リトライ:${retryCount}回)`, p, qMaxScore);
-      next();
-    };
-
-    container.appendChild(wrap); container.appendChild(valDisp); 
-    container.appendChild(actionBtn); container.appendChild(submitBtn);
-  }
-
-  // ------------------------------------------
-  // 5. 空間配置：自由ドラッグ (Q7)
-  // ------------------------------------------
-  else if (type === "align" && q.id === 3) {
+  else if (type === "align_fix") {
     const qMaxScore = 30;
-    tiMaxPossible += qMaxScore;
     const wrap = document.createElement("div"); wrap.style.display="flex"; wrap.style.justifyContent="center"; wrap.style.gap="15px"; wrap.style.margin="25px 0";
     let isFixed = false;
     for (let i = 0; i < 4; i++) {
@@ -666,6 +532,7 @@ function renderQuestion() {
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="次へ";
     btn.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       let p = isFixed ? qMaxScore : 0;
       if (isFixed) { scores.leading += 25; } else { scores.vulnerable += 30; }
       tiUserPoints += p;
@@ -674,85 +541,59 @@ function renderQuestion() {
     };
     container.appendChild(wrap); container.appendChild(btn);
   }
-// ------------------------------------------
-  // 5. 空間配置：自由ドラッグ (Q7 - 完全較正版)
+
+  // ------------------------------------------
+  // 5. 空間配置：自由ドラッグ (Q7 - マグネット＆特異点機能)
   // ------------------------------------------
   else if (type === "align_free") {
     const qMaxScore = 30;
-    tiMaxPossible += qMaxScore;
-    const area = document.createElement("div"); 
-    area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px";
-    
-    // ★タイトルに「格子状」の補足を追加して分かりやすく！
     title.innerHTML = "【空間システム構築】<br>指示：4つの箱をドラッグし、『互いのX座標とY座標の間隔が完全に等しくなる状態（グリッド：格子状の整列）』を構築せよ。";
-
+    const area = document.createElement("div"); area.style.height="260px"; area.style.position="relative"; area.style.border="2px dashed #38bdf8"; area.style.background="rgba(0,0,0,0.25)"; area.style.marginBottom="15px";
+    
     const boxes = [];
     for (let i = 0; i < 4; i++) {
       const b = document.createElement("div"); b.className = "align-box"; b.style.position="absolute";
       b.style.top = (i * 45) + "px"; b.style.left = (i * 45) + "px";
-      
       setupDraggable(b, (x, y, el, target, offX, offY) => {
-        const r = area.getBoundingClientRect(); 
-        el.style.position = 'absolute';
-        
-        let newLeft = x - r.left - offX;
-        let newTop = y - r.top - offY;
-        
-        // ★【マグネット吸着機能】★
-        // 他の箱の座標に近づいたら（15px以内）、磁石のように座標を自動でピタッと一致させる！
+        const r = area.getBoundingClientRect(); el.style.position = 'absolute';
+        let newLeft = x - r.left - offX; let newTop = y - r.top - offY;
+        // マグネット機能
         boxes.forEach(other => {
-          if (other === el) return; // 自分自身は除外
-          const oL = parseInt(other.style.left);
-          const oT = parseInt(other.style.top);
-          
-          if (!isNaN(oL) && Math.abs(newLeft - oL) < 15) {
-            newLeft = oL; // X座標をスナップして完全に一列に！
-          }
-          if (!isNaN(oT) && Math.abs(newTop - oT) < 15) {
-            newTop = oT; // Y座標をスナップして完全に一列に！
-          }
+          if (other === el) return;
+          const oL = parseInt(other.style.left); const oT = parseInt(other.style.top);
+          if (!isNaN(oL) && Math.abs(newLeft - oL) < 15) newLeft = oL;
+          if (!isNaN(oT) && Math.abs(newTop - oT) < 15) newTop = oT;
         });
-
-        // 枠外はみ出し防止
         el.style.left = Math.min(Math.max(newLeft, 0), r.width - 50) + "px";
         el.style.top = Math.min(Math.max(newTop, 0), r.height - 50) + "px";
-        el.dataset.moved = "true";
-        area.appendChild(el);
+        el.dataset.moved = "true"; area.appendChild(el);
       });
       area.appendChild(b); boxes.push(b);
     }
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="この配置で確定";
     btn.onclick = () => {
-      saveHistory(); let corners = 0; let yC = []; let xC = [];
+      saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
+      let corners = 0; let yC = []; let xC = [];
       boxes.forEach(b => {
         const l = parseInt(b.style.left), t = parseInt(b.style.top); yC.push(t); xC.push(l);
         if ((l < 50 || l > area.offsetWidth - 80) && (t < 50 || t > area.offsetHeight - 80)) corners++;
       });
       
-      // X軸、Y軸のバラつきを計算
-      const dY = Math.max(...yC) - Math.min(...yC); 
-      const dX = Math.max(...xC) - Math.min(...xC);
-      
-      // 特異点（レイヤー重ね）配置の判定
+      const dY = Math.max(...yC) - Math.min(...yC); const dX = Math.max(...xC) - Math.min(...xC);
       let isOverlap = (dY < 25 && dX < 25);
-
-      // 2x2のグリッド配置」を検知するロジック
       let isGrid = false;
       if (!isOverlap) {
         let uniqueX = [...xC].sort((a,b)=>a-b).filter((v,i,a) => i===0 || v - a[i-1] > 20).length;
         let uniqueY = [...yC].sort((a,b)=>a-b).filter((v,i,a) => i===0 || v - a[i-1] > 20).length;
         isGrid = (uniqueX === 2 && uniqueY === 2);
       }
-      
-      let isAligned = (dY < 20 || dX < 20) && !isOverlap; // 1列に綺麗に並べた場合（重なりは除外）
+      let isAligned = (dY < 20 || dX < 20) && !isOverlap; 
       
       let p = 0; let msg = "";
-      if (isOverlap) {
-        p = qMaxScore; msg = "特異点(シンギュラリティ)配置(証明/創造Ti)";
-        scores.proof += 30; scores.creative += 20; 
-      }
+      if (isOverlap) { p = qMaxScore; msg = "特異点配置(証明/創造)"; scores.proof += 30; scores.creative += 20; }
       else if (isAligned) { p = qMaxScore; msg = "一列整列(主導Ti)"; scores.leading += 25; }
-      else if (isGrid) { p = qMaxScore; msg = "グリッド配置(創造Ti)"; scores.creative += 25; scores.proof += 10; }
+      else if (isGrid) { p = qMaxScore; msg = "グリッド(創造Ti)"; scores.creative += 25; scores.proof += 10; }
       else if (corners >= 3) { p = qMaxScore; msg = "四隅支配(Se)"; seFlag = true; scores.creative += 10; }
       else { p = 10; msg = "適当な配置"; scores.vulnerable += 20; }
       
@@ -760,23 +601,21 @@ function renderQuestion() {
     };
     container.appendChild(area); container.appendChild(btn);
   }
+
   // ------------------------------------------
   // 6. 二重分類 (Q6)
   // ------------------------------------------
   else if (type === "classification") {
     const qMaxScore = 40;
-    tiMaxPossible += qMaxScore;
     const wrap = document.createElement("div"); wrap.className="folder-wrap";
     const f1 = document.createElement("div"); f1.className="folder"; f1.id="v-folder"; f1.innerHTML="<b>野菜</b>";
     const f2 = document.createElement("div"); f2.className="folder"; f2.id="f-folder"; f2.innerHTML="<b>果物</b>";
     const pool = document.createElement("div"); pool.id="item-pool"; pool.style.minHeight="70px"; pool.style.border="1px solid #38bdf8"; pool.style.padding="10px"; pool.style.margin="15px 0"; pool.style.display="flex"; pool.style.gap="8px"; pool.style.flexWrap="wrap";
     
-    ["トマト", "スイカ", "アボカド", "イチゴ"].forEach(txt => {
+    ["トマト", "スイカ", "アボカド", "イチゴ", "バナナ", "パイナップル"].forEach(txt => {
       const it = document.createElement("div"); it.className="draggable-item"; it.innerText=txt;
       setupDraggable(it, (x, y, el, target) => {
-        if (target && target.closest("#v-folder")) f1.appendChild(el);
-        else if (target && target.closest("#f-folder")) f2.appendChild(el);
-        else pool.appendChild(el);
+        if (target && target.closest("#v-folder")) f1.appendChild(el); else if (target && target.closest("#f-folder")) f2.appendChild(el); else pool.appendChild(el);
         el.style.position="static";
       });
       pool.appendChild(it);
@@ -784,12 +623,11 @@ function renderQuestion() {
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="分類を終了";
     btn.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       const moved = f1.children.length + f2.children.length - 2;
       let p = (moved > 0) ? qMaxScore : 0;
       if (p === qMaxScore) scores.leading += 25; else scores.vulnerable += 30;
-      tiUserPoints += p;
-      logAction("仕分け完了", p, qMaxScore);
-      next();
+      tiUserPoints += p; logAction("仕分け完了", p, qMaxScore); next();
     };
     wrap.appendChild(f1); wrap.appendChild(f2); container.appendChild(wrap); container.appendChild(pool); container.appendChild(btn);
   }
@@ -799,15 +637,13 @@ function renderQuestion() {
   // ------------------------------------------
   else if (type === "black_white_boundary") {
     const qMaxScore = 35;
-    tiMaxPossible += qMaxScore;
     const bar = document.createElement("div"); bar.className="gradient-bar";
     const handle = document.createElement("div"); handle.className="boundary-handle"; handle.style.left="5%"; bar.appendChild(handle);
     let isClicked = false;
     handle.onmousedown = handle.ontouchstart = (e) => { 
       isClicked = true;
       const move = (me) => {
-        const mx = me.touches ? me.touches[0].clientX : me.clientX;
-        const r = bar.getBoundingClientRect();
+        const mx = me.touches ? me.touches[0].clientX : me.clientX; const r = bar.getBoundingClientRect();
         let p = mx - r.left; if(p<0)p=0; if(p>r.width)p=r.width;
         handle.style.left = p + "px"; handle.dataset.val = (p/r.width)*100;
       };
@@ -817,12 +653,11 @@ function renderQuestion() {
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="境界を確定";
     btn.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       let v = parseFloat(handle.dataset.val || 5);
       let p = (isClicked && v > 89) ? qMaxScore : 10;
       if (v > 89) { scores.leading += 30; scores.proof += 15; } else { scores.normative += 25; }
-      tiUserPoints += p;
-      logAction(`B-Line:${v.toFixed(1)}%`, p, qMaxScore);
-      next();
+      tiUserPoints += p; logAction(`B-Line:${v.toFixed(1)}%`, p, qMaxScore); next();
     };
     container.appendChild(bar); container.appendChild(btn);
   }
@@ -832,7 +667,6 @@ function renderQuestion() {
   // ------------------------------------------
   else if (type === "manual_gimmick") {
     const qMaxScore = 50;
-    tiMaxPossible += qMaxScore;
     const mBox = document.createElement("div"); mBox.style.fontSize="0.75rem"; mBox.style.background="rgba(0,0,0,0.4)"; mBox.style.padding="10px"; mBox.style.border="1px solid #38bdf8"; mBox.style.textAlign="left";
     mBox.innerHTML = q.manual_text; container.appendChild(mBox);
     const pList = document.createElement("div"); pList.style.display="flex"; pList.style.flexDirection="column"; pList.style.gap="8px"; pList.style.margin="15px 0";
@@ -853,45 +687,40 @@ function renderQuestion() {
     const go = document.createElement("button"); go.className="choice-btn"; go.innerText="この手順で実行";
     go.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       const first = Array.from(pList.children).find(el => el.dataset.order === "1");
       let p = (first && first.innerText.includes("フィルム")) ? qMaxScore : 0;
       if (p === qMaxScore) { scores.leading += 30; scores.proof += 20; } else { scores.vulnerable += 40; }
-      tiUserPoints += p;
-      logAction("Manual", p, qMaxScore);
-      next();
+      tiUserPoints += p; logAction("Manual", p, qMaxScore); next();
     };
     container.appendChild(pList); container.appendChild(go);
   }
 
   // ------------------------------------------
-  // 9. 文章修正デバッグ (Q19)
+  // 9. 論理デバッグ (最新キーワード判定版)
   // ------------------------------------------
   else if (type === "text_debug") {
-    const qMaxScore = 40; tiMaxPossible += qMaxScore;
+    const qMaxScore = 40;
     const desc = document.createElement("p"); desc.style.fontSize="0.85rem"; desc.style.textAlign="left";
     desc.innerHTML = "<b>※指示：</b> 「80％の人がAと回答しました。よってAが多数派です」<br>この主張の論理的欠陥を指摘してください。"; container.appendChild(desc);
-    
-    const input = document.createElement("textarea"); input.className="feedback-input"; input.placeholder="理由を記述してください...";
-    container.appendChild(input);
-    
+    const input = document.createElement("textarea"); input.className="feedback-input"; input.placeholder="理由を記述してください..."; container.appendChild(input);
     const fixBtn = document.createElement("button"); fixBtn.className="choice-btn"; fixBtn.innerText="回答を提出";
-fixBtn.onclick = () => {
+    fixBtn.onclick = () => {
       saveHistory(); 
-      let val = input.value.trim();
-      let p = 0; let msg = "";
+      tiMaxPossible += qMaxScore; // ★分母加算
+      let val = input.value.trim(); let p = 0; let msg = "";
       
-      // ★みつきの分析通り、Ne的な「他・選択肢・可能性」は創造Ti(creative)へ変更！
-      const leadingKeywords = ["母数", "矛盾",  "全体", "分母", "前提", "対象", "標本", "サンプリング", "バイアス", "偏り", "割合", "有効", "代表性", "定義"];
+      const leadingKeywords = ["母数", "全体", "分母", "前提", "対象", "標本", "サンプリング", "バイアス", "偏り", "割合", "有効", "代表性", "定義"];
       const creativeKeywords = ["他", "選択肢", "可能性", "確率", "選択", "状況", "ケース"];
-      const proofKeywords = ["欠陥", "破綻", "飛躍", "事実", "根拠", "極端", "限定"];
+      const proofKeywords = ["矛盾", "欠陥", "破綻", "飛躍", "事実", "根拠", "極端", "限定"];
       const normativeKeywords = ["普通", "一般", "常識", "多数", "多い"];
 
       if (leadingKeywords.some(kw => val.includes(kw))) {
         p = qMaxScore; scores.leading += 30; msg = "主導Ti";
       } else if (creativeKeywords.some(kw => val.includes(kw))) {
-        p = qMaxScore; scores.creative += 30; msg = "創造Ti"; // ★他、選択肢、可能性は創造Ti！
+        p = qMaxScore; scores.creative += 30; msg = "創造Ti"; 
       } else if (proofKeywords.some(kw => val.includes(kw))) {
-        p = qMaxScore; scores.proof += 30; msg = "証明Ti";   // ★証明Tiは批判・バグ指摘
+        p = qMaxScore; scores.proof += 30; msg = "証明Ti"; 
       } else if (normativeKeywords.some(kw => val.includes(kw))) {
         p = 15; scores.normative += 15; msg = "規範Ti";
       } else if (val.length < 5) {
@@ -899,23 +728,19 @@ fixBtn.onclick = () => {
       } else {
         p = 15; scores.normative += 15; msg = "一般回答(規範Ti)";
       }
-      
-      tiUserPoints += p;
-      logAction(`デバッグ:「${val}」と記述 (${msg})`, p, qMaxScore); 
-      next();
+      tiUserPoints += p; logAction(`デバッグ:「${val.substring(0,10)}…」(${msg})`, p, qMaxScore); next();
     };
     container.appendChild(fixBtn);
   }
 
   // ------------------------------------------
-  // 10. 情報の木 (Q13)
+  // 10. 情報の木 (Q13) ★バナナとパイナップル含む4つ判定
   // ------------------------------------------
   else if (type === "logic_tree") {
     const qMaxScore = 35;
-    tiMaxPossible += qMaxScore;
     const treeF = document.createElement("div"); treeF.className="folder"; treeF.style.width="95%"; treeF.innerHTML="<b>食べ物</b>";
     const treeP = document.createElement("div"); treeP.style.padding="10px"; treeP.style.display="flex"; treeP.style.gap="8px"; treeP.style.flexWrap="wrap";
-    ["いちご","トマト","草", "バナナ", "パイナップル","耳のキノコ","脇のもやし"].forEach(tx => {
+    ["いちご","トマト","草","バナナ","パイナップル","耳のキノコ","脇のもやし"].forEach(tx => {
       const item = document.createElement("div"); item.className="draggable-item"; item.innerText=tx;
       setupDraggable(item, (x,y,el,target) => {
         if(target && target.closest(".folder")) treeF.appendChild(el); else treeP.appendChild(el);
@@ -926,21 +751,17 @@ fixBtn.onclick = () => {
     const ok = document.createElement("button"); ok.className="choice-btn"; ok.innerText="確定";
     ok.onclick = () => {
       saveHistory();
-      tiMaxPossible += qMaxScore; // ここで分母加算
+      tiMaxPossible += qMaxScore; // ★分母加算
       const inFolder = Array.from(treeF.querySelectorAll('.draggable-item')).map(el => el.innerText);
       let p = 0; let msg = "";
-      
-      // ★【較正】要素数を「2」から「4」に修正！
       if (inFolder.length === 4 && inFolder.includes("いちご") && inFolder.includes("トマト") && inFolder.includes("バナナ") && inFolder.includes("パイナップル")) {
         scores.leading += 30; p = qMaxScore; msg = "厳密分類(主導Ti)";
       } else if (inFolder.includes("耳のキノコ") || inFolder.includes("脇のもやし")) {
         scores.creative += 30; p = qMaxScore; msg = "創造分類(創造Ti)";
       } else {
-        scores.vulnerable += 30; p = 10; msg = "不完全分類";
+        scores.vulnerable += 25; p = 10; msg = "不完全分類";
       }
-      tiUserPoints += p;
-      logAction(msg, p, qMaxScore);
-      next();
+      tiUserPoints += p; logAction(msg, p, qMaxScore); next();
     };
     container.appendChild(treeF); container.appendChild(treeP); container.appendChild(ok);
   }
@@ -950,7 +771,6 @@ fixBtn.onclick = () => {
   // ------------------------------------------
   else if (type === "creative_ti_gimmick") {
     const qMaxScore = 30;
-    tiMaxPossible += qMaxScore;
     const slot = document.createElement("div"); slot.className="folder"; slot.id="exp-slot"; slot.style.width="95%"; slot.style.minHeight="80px"; slot.innerHTML="<b>【説明スロット(2つまで)】</b>";
     const pArea = document.createElement("div"); pArea.style.display="flex"; pArea.style.flexDirection="column"; pArea.style.gap="5px"; pArea.style.margin="10px 0";
     q.blocks.forEach(b => {
@@ -965,41 +785,38 @@ fixBtn.onclick = () => {
     const finish = document.createElement("button"); finish.className="choice-btn"; finish.innerText="これで説明する";
     finish.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       const ids = Array.from(slot.querySelectorAll(".draggable-item")).map(el => el.dataset.id);
       let p = 0;
       if (ids.includes("B") || ids.includes("C") || ids.includes("D")) {
-        scores.creative += 35; p = qMaxScore; logAction("創造的説明", p, qMaxScore);
+        scores.creative += 30; p = qMaxScore; logAction("創造的説明", p, qMaxScore);
       } else {
-        scores.leading += 25; p = 20; logAction("主導的説明", p, qMaxScore);
+        scores.leading += 25; p = qMaxScore; logAction("厳密な説明(主導Ti)", p, qMaxScore); // ★ここも主導Tiとして満点になるよう修正済
       }
-      tiUserPoints += p;
-      next();
+      tiUserPoints += p; next();
     };
     container.appendChild(slot); container.appendChild(pArea); container.appendChild(finish);
   }
 
   // ------------------------------------------
-  // 12. パラドックス (Q15) & ルール適用 (Q16)
+  // 12. パラドックス & ルール適用
   // ------------------------------------------
   else if (type === "paradox_gimmick") {
     const qMaxScore = 40;
-    tiMaxPossible += qMaxScore;
     q.rules.forEach(r => {
       const rb = document.createElement("button"); rb.className="choice-btn"; rb.innerText=r.text;
       rb.onclick = () => {
         saveHistory();
+        tiMaxPossible += qMaxScore; // ★分母加算
         let p = (r.id === "C") ? qMaxScore : 0;
         if(p === qMaxScore) scores.proof += 35; else scores.vulnerable += 40;
-        tiUserPoints += p;
-        logAction(`Paradox:${r.id}`, p, qMaxScore);
-        next();
+        tiUserPoints += p; logAction(`Paradox:${r.id}`, p, qMaxScore); next();
       };
       container.appendChild(rb);
     });
   }
   else if (type === "rule_application") {
     const qMaxScore = 45;
-    tiMaxPossible += qMaxScore;
     const w = document.createElement("div"); w.style.display="flex"; w.style.flexWrap="wrap"; w.style.gap="10px";
     ["A","B","C","D"].forEach(l => {
       const box = document.createElement("div"); box.className="folder"; box.id="b-"+l; box.style.width="45%"; box.style.minHeight="60px"; box.innerHTML=`<b>BOX ${l}</b>`;
@@ -1014,25 +831,23 @@ fixBtn.onclick = () => {
     const b = document.createElement("button"); b.className="choice-btn"; b.innerText="適用完了";
     b.onclick = () => {
       saveHistory();
+      tiMaxPossible += qMaxScore; // ★分母加算
       const isOk = document.getElementById("b-D").querySelector(".draggable-item");
       let p = isOk ? qMaxScore : 0;
       if(isOk) { scores.proof += 40; scores.leading += 10; } else { scores.vulnerable += 40; }
-      tiUserPoints += p;
-      logAction(isOk?"Rule:OK":"Rule:NG", p, qMaxScore);
-      next();
+      tiUserPoints += p; logAction(isOk?"Rule:OK":"Rule:NG", p, qMaxScore); next();
     };
     container.appendChild(b);
   }
 
   // --- 共通フッター ---
-// --- フッター（戻る ＆ スキップ ＆ わからない） ---
-  const footer = document.createElement("div"); 
-  footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.flexWrap = "wrap"; footer.style.gap = "10px";
+  const footer = document.createElement("div");
+  footer.style.marginTop = "25px"; footer.style.display = "flex"; footer.style.gap = "10px"; footer.style.flexWrap = "wrap";
 
-  const backBtn = document.createElement("button"); 
+  const backBtn = document.createElement("button");
   backBtn.className = "choice-btn"; backBtn.style.flex = "1"; backBtn.style.background = "rgba(255,255,255,0.05)";
-  backBtn.innerHTML = "<i class='fa-solid fa-arrow-left'></i> 戻る"; 
-  backBtn.onclick = goBack; 
+  backBtn.innerHTML = "<i class='fa-solid fa-arrow-left'></i> 戻る";
+  backBtn.onclick = goBack;
   if (history.length === 0) backBtn.style.opacity = "0.3";
 
   // ① 理論派向けのスキップ（時間経過で判定が変わる！）
@@ -1041,35 +856,32 @@ fixBtn.onclick = () => {
   skipBtn.innerHTML = "解なし / 判定保留"; 
   skipBtn.onclick = () => { 
     saveHistory(); 
+    tiMaxPossible += 15; // スキップの分母は少なめに固定
     const elapsed = Date.now() - questionStartTime;
     let p = 0;
-    // 15秒以上悩んだ末のスキップは「選択肢への不服（Ti的こだわり）」とみなす！
     if (elapsed > 15000) {
       scores.ignoring += 25; scores.leading += 10;
-      p = 15; // 考えた努力とこだわりに対して部分点を与える
-      logAction("熟考の末の保留(Tiのこだわり)", p, 0);
+      p = 15; // 熟考の証として満点(15)を与える
+      logAction("熟考の末の保留", p, 15);
     } else {
       scores.vulnerable += 30;
-      logAction("即決スキップ", p, 0);
+      logAction("即決スキップ", p, 15);
     }
     tiUserPoints += p; next(); 
   };
 
-  // ② 思考放棄ボタンｗｗｗ
+  // ② 思考放棄ボタン
   const wakaraniBtn = document.createElement("button"); 
   wakaraniBtn.className = "choice-btn"; wakaraniBtn.style.flex = "3"; wakaraniBtn.style.background = "rgba(239, 68, 68, 0.2)";
   wakaraniBtn.style.color = "#fff";
   wakaraniBtn.innerHTML = "(  ˙꒳​˙ ) ﾁｮｯﾄﾅﾆｲｯﾃﾙｶﾜｶﾗﾅｲ";
   wakaraniBtn.onclick = () => {
     saveHistory();
-    wakaraniCount++; // ★ 押した回数をカウント！
-    
-    // 性格判定は少しだけ脆弱・暗示・動員に散らす（極端な判定崩れを防止）
-    scores.vulnerable += 10;
-    scores.suggestive += 5;
-    scores.mobilizing += 5;
-    
-    logAction("思考放棄(ﾁｮｯﾄﾅﾆｲｯﾃﾙｶﾜｶﾗﾅｲ)", 0, 0);
+    tiMaxPossible += 10;
+    scores.vulnerable += 50; 
+    textChoiceCounts.vulnerable += 2; // 脆弱コンボ追加
+    wakaraniCount++; // マイナス10%ペナルティ用
+    logAction("思考放棄", 0, 10);
     next();
   };
 
