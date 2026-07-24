@@ -615,19 +615,50 @@ function renderQuestion() {
     ["トマト", "スイカ", "アボカド", "イチゴ", "バナナ", "パイナップル"].forEach(txt => {
       const it = document.createElement("div"); it.className="draggable-item"; it.innerText=txt;
       setupDraggable(it, (x, y, el, target) => {
-        if (target && target.closest("#v-folder")) f1.appendChild(el); else if (target && target.closest("#f-folder")) f2.appendChild(el); else pool.appendChild(el);
+        if (target && target.closest("#v-folder")) f1.appendChild(el);
+        else if (target && target.closest("#f-folder")) f2.appendChild(el);
+        else pool.appendChild(el);
         el.style.position="static";
       });
       pool.appendChild(it);
     });
+    
     const btn = document.createElement("button"); btn.className="choice-btn"; btn.innerText="分類を終了";
     btn.onclick = () => {
       saveHistory();
-      tiMaxPossible += qMaxScore; // ★分母加算
-      const moved = f1.children.length + f2.children.length - 2;
+      tiMaxPossible += qMaxScore; // 分母加算
+      
+      const vegItems = Array.from(f1.querySelectorAll('.draggable-item')).map(el => el.innerText);
+      const fruitItems = Array.from(f2.querySelectorAll('.draggable-item')).map(el => el.innerText);
+      const moved = vegItems.length + fruitItems.length;
+      
+      // ★【裏ルート】農林水産省ガチ分類の検知★
+      const isGachi = (
+        vegItems.length === 5 && 
+        vegItems.includes("トマト") && vegItems.includes("スイカ") && vegItems.includes("イチゴ") && vegItems.includes("バナナ") && vegItems.includes("パイナップル") &&
+        fruitItems.length === 1 && fruitItems.includes("アボカド")
+      );
+      
       let p = (moved > 0) ? qMaxScore : 0;
-      if (p === qMaxScore) scores.leading += 25; else scores.vulnerable += 30;
-      tiUserPoints += p; logAction("仕分け完了", p, qMaxScore); next();
+      let msg = "";
+
+      if (isGachi) {
+        scores.proof += 35; // 事実・定義に基づく証明力（ILI等）
+        scores.leading += 20; 
+        msg = "農水省分類(証明/Te)";
+        // 結果画面のログにドカンと表示させる！
+        actionLog.push(`[隠し要素解放] 農林水産省の厳密な定義分類を検知。Te(客観的事実)と証明Tiの才能があります！`);
+      } else if (p === qMaxScore) {
+        scores.leading += 25;
+        msg = "独自分類完了(主導Ti)";
+      } else {
+        scores.vulnerable += 30;
+        msg = "分類放棄(脆弱Ti)";
+      }
+      
+      tiUserPoints += p;
+      logAction(msg, p, qMaxScore);
+      next();
     };
     wrap.appendChild(f1); wrap.appendChild(f2); container.appendChild(wrap); container.appendChild(pool); container.appendChild(btn);
   }
